@@ -466,6 +466,9 @@ ALIAS (no_router_bgp,
        "BGP view\n"
        "view name\n")
 
+/* BGP mode. */
+
+
 /* BGP router-id.  */
 
 DEFUN (bgp_router_id,
@@ -3334,6 +3337,41 @@ ALIAS (no_neighbor_default_originate,
        "Route-map to specify criteria to originate default\n"
        "route-map name\n")
 
+
+
+/* Set BGP mode.  */
+static int
+bgp_mode_vty (struct vty *vty, const char *ip_str, int afi, 
+               const char *port_str)
+{
+  struct peer *peer;
+  u_int16_t mode;
+  struct servent *sp;
+
+  struct bgp *bgp;
+
+  bgp = vty->index;
+
+  peer = peer_lookup_vty (vty, ip_str);
+  if (! peer)
+    return CMD_WARNING;
+
+  if (! port_str)
+    { 
+      sp = getservbyname ("bgp", "tcp");
+      mode = (sp == NULL) ? BGP_PORT_DEFAULT : ntohs (sp->s_port);
+    }
+  else
+    {
+      VTY_GET_INTEGER("mode", mode, port_str);
+    }
+
+  bgp_mode_set (bgp, mode);
+
+  return CMD_SUCCESS;
+}
+
+
 /* Set neighbor's BGP port.  */
 static int
 peer_port_vty (struct vty *vty, const char *ip_str, int afi, 
@@ -3427,6 +3465,40 @@ ALIAS (no_neighbor_avatr,
 
 
 
+/* Set specified bgp mode.  */
+DEFUN (bgp_mode,
+       bgp_mode_cmd,
+       NEIGHBOR_CMD "mode <0-65535>",
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP mode\n"
+       "TCP port number\n")
+{
+
+  return bgp_mode_vty (vty, argv[0], AFI_IP, argv[1]);
+}
+
+DEFUN (no_bgp_mode,
+       no_bgp_mode_cmd,
+       NO_NEIGHBOR_CMD "mode",
+       NO_STR
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP mode\n")
+{
+  return bgp_mode_vty (vty, argv[0], AFI_IP, NULL);
+}
+
+ALIAS (no_bgp_mode,
+       no_bgp_mode_val_cmd,
+       NO_NEIGHBOR_CMD "mode <0-65535>",
+       NO_STR
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP mode\n"
+       "TCP port number\n")
+
+
 
 
 /* Set specified peer's BGP port.  */
@@ -3438,6 +3510,7 @@ DEFUN (neighbor_port,
        "Neighbor's BGP port\n"
        "TCP port number\n")
 {
+
   return peer_port_vty (vty, argv[0], AFI_IP, argv[1]);
 }
 
@@ -10129,6 +10202,14 @@ bgp_vty_init (void)
   install_element (BGP_NODE, &no_bgp_router_id_cmd);
   install_element (BGP_NODE, &no_bgp_router_id_val_cmd);
 
+  /* "bgp mode" commands. */
+  install_element (BGP_NODE, &bgp_mode_cmd);
+  install_element (BGP_NODE, &no_bgp_mode_cmd);
+  install_element (BGP_NODE, &no_bgp_mode_val_cmd);
+
+
+
+
   /* "bgp cluster-id" commands. */
   install_element (BGP_NODE, &bgp_cluster_id_cmd);
   install_element (BGP_NODE, &bgp_cluster_id32_cmd);
@@ -10741,6 +10822,10 @@ bgp_vty_init (void)
   install_element (BGP_NODE, &no_neighbor_port_cmd);
   install_element (BGP_NODE, &no_neighbor_port_val_cmd);
 
+  /* "neighbor mode" commands. */
+  install_element (BGP_NODE, &bgp_mode_cmd);
+  install_element (BGP_NODE, &no_bgp_mode_cmd);
+  install_element (BGP_NODE, &no_bgp_mode_val_cmd);
 
     /* "neighbor avatar" commands. */
   install_element (BGP_NODE, &neighbor_avatar_cmd);

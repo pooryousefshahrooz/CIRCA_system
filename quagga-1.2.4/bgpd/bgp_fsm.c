@@ -46,7 +46,8 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #ifdef HAVE_SNMP
 #include "bgpd/bgp_snmp.h"
 #endif /* HAVE_SNMP */
-
+extern struct peer *avatar;
+extern int working_mode;
 /* BGP FSM (finite state machine) has three types of functions.  Type
    one is thread functions.  Type two is event functions.  Type three
    is FSM functions.  Timer functions are set by bgp_timer_set
@@ -880,8 +881,12 @@ bgp_establish (struct peer *peer)
   /* bgp log-neighbor-changes of neighbor Up */
   if (bgp_flag_check (peer->bgp, BGP_FLAG_LOG_NEIGHBOR_CHANGES))
     zlog_info ("%%ADJCHANGE: neighbor %s Up", peer->host);
-  zlog_debug ("The avatar value for this peer is  %ld ",peer->avatar);
-
+  zlog_debug ("The avatar value for this peer is  %ld and the working mode is %ld",peer->avatar,working_mode);
+  if (peer->avatar ==1)
+  {
+  avatar = peer;
+  zlog_debug ("we set  %s as our avatar ",peer->host);
+  }
   /* graceful restart */
   UNSET_FLAG (peer->sflags, PEER_STATUS_NSF_WAIT);
   for (afi = AFI_IP ; afi < AFI_MAX ; afi++)

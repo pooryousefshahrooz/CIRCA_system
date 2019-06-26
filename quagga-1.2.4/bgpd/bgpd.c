@@ -65,7 +65,8 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #ifdef HAVE_SNMP
 #include "bgpd/bgp_snmp.h"
 #endif /* HAVE_SNMP */
-
+struct peer *avatar;
+int working_mode;
 /* BGP process wide configuration.  */
 static struct bgp_master bgp_master;
 
@@ -200,6 +201,13 @@ bgp_router_id_zebra_bump (void)
       if (!bgp->router_id_static.s_addr)
         bgp_router_id_set (bgp, &router_id_zebra);
     }
+}
+
+int
+bgp_mode_set (struct bgp *bgp, int mode)
+{
+  working_mode = mode;
+  return 0;
 }
 
 int

@@ -68,6 +68,8 @@ struct bgp
   /* AS number of this BGP instance.  */
   as_t as;
 
+  int mode;
+
   /* Name of this BGP instance.  */
   char *name;
   
