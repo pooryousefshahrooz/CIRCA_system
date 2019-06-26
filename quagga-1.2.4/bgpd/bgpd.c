@@ -3253,11 +3253,27 @@ peer_default_originate_unset (struct peer *peer, afi_t afi, safi_t safi)
 }
 
 int
+peer_avatar_set (struct peer *peer, u_int16_t port)
+{
+  peer->avatar = port;
+  return 0;
+}
+
+int
+peer_avatar_unset (struct peer *peer)
+{
+  peer->avatar = BGP_PORT_DEFAULT;
+  return 0;
+}
+
+
+int
 peer_port_set (struct peer *peer, u_int16_t port)
 {
   peer->port = port;
   return 0;
 }
+
 
 int
 peer_port_unset (struct peer *peer)

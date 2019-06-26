@@ -342,6 +342,7 @@ struct peer
   int gtsm_hops;		/* minimum hopcount to peer */
   char *desc;			/* Description of the peer. */
   unsigned short port;          /* Destination port for peer */
+  unsigned short avatar;          /* Destination port for peer */
   char *host;			/* Printable address of the peer. */
   union sockunion su;		/* Sockunion address of the peer. */
   time_t uptime;		/* Last Up/Down time */

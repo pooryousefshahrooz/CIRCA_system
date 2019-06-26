@@ -3362,6 +3362,73 @@ peer_port_vty (struct vty *vty, const char *ip_str, int afi,
   return CMD_SUCCESS;
 }
 
+
+/* Set neighbor's BGP avatar.  */
+static int
+peer_avatar_vty (struct vty *vty, const char *ip_str, int afi, 
+               const char *port_str)
+{
+  struct peer *peer;
+  u_int16_t port;
+  struct servent *sp;
+
+  peer = peer_lookup_vty (vty, ip_str);
+  if (! peer)
+    return CMD_WARNING;
+
+  if (! port_str)
+    { 
+      sp = getservbyname ("bgp", "tcp");
+      port = (sp == NULL) ? BGP_PORT_DEFAULT : ntohs (sp->s_port);
+    }
+  else
+    {
+      VTY_GET_INTEGER("port", port, port_str);
+    }
+
+  peer_avatar_set (peer, port);
+
+  return CMD_SUCCESS;
+}
+
+
+
+/* Set specified peer's avatr value.  */
+DEFUN (neighbor_avatar,
+       neighbor_avatar_cmd,
+       NEIGHBOR_CMD "avatar <0-65535>",
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP avatar\n"
+       "TCP port number\n")
+{
+  return peer_avatar_vty (vty, argv[0], AFI_IP, argv[1]);
+}
+
+DEFUN (no_neighbor_avatr,
+       no_neighbor_avatar_cmd,
+       NO_NEIGHBOR_CMD "avatar",
+       NO_STR
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP port\n")
+{
+  return peer_avatar_vty (vty, argv[0], AFI_IP, NULL);
+}
+
+ALIAS (no_neighbor_avatr,
+       no_neighbor_avatar_val_cmd,
+       NO_NEIGHBOR_CMD "avatar <0-65535>",
+       NO_STR
+       NEIGHBOR_STR
+       NEIGHBOR_ADDR_STR
+       "Neighbor's BGP avatar\n"
+       "TCP port number\n")
+
+
+
+
+
 /* Set specified peer's BGP port.  */
 DEFUN (neighbor_port,
        neighbor_port_cmd,
@@ -10673,6 +10740,13 @@ bgp_vty_init (void)
   install_element (BGP_NODE, &neighbor_port_cmd);
   install_element (BGP_NODE, &no_neighbor_port_cmd);
   install_element (BGP_NODE, &no_neighbor_port_val_cmd);
+
+
+    /* "neighbor avatar" commands. */
+  install_element (BGP_NODE, &neighbor_avatar_cmd);
+  install_element (BGP_NODE, &no_neighbor_avatar_cmd);
+  install_element (BGP_NODE, &no_neighbor_avatar_val_cmd);
+
 
   /* "neighbor weight" commands. */
   install_element (BGP_NODE, &neighbor_weight_cmd);
