@@ -300,7 +300,7 @@ struct peer
   u_char af_group[AFI_MAX][SAFI_MAX];
 
   /* Peer's remote AS number. */
-  as_t as;			
+  as_t as;      
 
   /* Peer's local AS number. */
   as_t local_as;
@@ -338,29 +338,29 @@ struct peer
   uint16_t table_dump_index;
 
   /* Peer information */
-  int fd;			/* File descriptor */
-  int ttl;			/* TTL of TCP connection to the peer. */
-  int rtt;			/* Estimated round-trip-time from TCP_INFO */
-  int gtsm_hops;		/* minimum hopcount to peer */
-  char *desc;			/* Description of the peer. */
+  int fd;     /* File descriptor */
+  int ttl;      /* TTL of TCP connection to the peer. */
+  int rtt;      /* Estimated round-trip-time from TCP_INFO */
+  int gtsm_hops;    /* minimum hopcount to peer */
+  char *desc;     /* Description of the peer. */
   unsigned short port;          /* Destination port for peer */
   unsigned short avatar;          /* Destination port for peer */
-  char *host;			/* Printable address of the peer. */
-  union sockunion su;		/* Sockunion address of the peer. */
-  time_t uptime;		/* Last Up/Down time */
-  time_t readtime;		/* Last read time */
-  time_t resettime;		/* Last reset time */
+  char *host;     /* Printable address of the peer. */
+  union sockunion su;   /* Sockunion address of the peer. */
+  time_t uptime;    /* Last Up/Down time */
+  time_t readtime;    /* Last read time */
+  time_t resettime;   /* Last reset time */
   
-  ifindex_t ifindex;		/* ifindex of the BGP connection. */
-  char *ifname;			/* bind interface name. */
+  ifindex_t ifindex;    /* ifindex of the BGP connection. */
+  char *ifname;     /* bind interface name. */
   char *update_if;
   union sockunion *update_source;
   struct zlog *log;
 
-  union sockunion *su_local;	/* Sockunion of local address.  */
-  union sockunion *su_remote;	/* Sockunion of remote address.  */
-  int shared_network;		/* Is this peer shared same network. */
-  struct bgp_nexthop nexthop;	/* Nexthop */
+  union sockunion *su_local;  /* Sockunion of local address.  */
+  union sockunion *su_remote; /* Sockunion of remote address.  */
+  int shared_network;   /* Is this peer shared same network. */
+  struct bgp_nexthop nexthop; /* Nexthop */
 
   /* Peer address family configuration. */
   u_char afc[AFI_MAX][SAFI_MAX];
@@ -442,7 +442,7 @@ struct peer
 
   /* Peer status flags. */
   u_int16_t sflags;
-#define PEER_STATUS_ACCEPT_PEER	      (1 << 0) /* accept peer */
+#define PEER_STATUS_ACCEPT_PEER       (1 << 0) /* accept peer */
 #define PEER_STATUS_PREFIX_OVERFLOW   (1 << 1) /* prefix-overflow */
 #define PEER_STATUS_CAPABILITY_OPEN   (1 << 2) /* capability open send */
 #define PEER_STATUS_OPEN_DEFERRED     (1 << 3) /* deferred to open_receive */
@@ -497,23 +497,23 @@ struct peer
   struct work_queue *clear_node_queue;
   
   /* Statistics field */
-  u_int32_t open_in;		/* Open message input count */
-  u_int32_t open_out;		/* Open message output count */
-  u_int32_t update_in;		/* Update message input count */
-  u_int32_t update_out;		/* Update message ouput count */
-  time_t update_time;		/* Update message received time. */
-  u_int32_t keepalive_in;	/* Keepalive input count */
-  u_int32_t keepalive_out;	/* Keepalive output count */
-  u_int32_t notify_in;		/* Notify input count */
-  u_int32_t notify_out;		/* Notify output count */
-  u_int32_t refresh_in;		/* Route Refresh input count */
-  u_int32_t refresh_out;	/* Route Refresh output count */
-  u_int32_t dynamic_cap_in;	/* Dynamic Capability input count.  */
-  u_int32_t dynamic_cap_out;	/* Dynamic Capability output count.  */
+  u_int32_t open_in;    /* Open message input count */
+  u_int32_t open_out;   /* Open message output count */
+  u_int32_t update_in;    /* Update message input count */
+  u_int32_t update_out;   /* Update message ouput count */
+  time_t update_time;   /* Update message received time. */
+  u_int32_t keepalive_in; /* Keepalive input count */
+  u_int32_t keepalive_out;  /* Keepalive output count */
+  u_int32_t notify_in;    /* Notify input count */
+  u_int32_t notify_out;   /* Notify output count */
+  u_int32_t refresh_in;   /* Route Refresh input count */
+  u_int32_t refresh_out;  /* Route Refresh output count */
+  u_int32_t dynamic_cap_in; /* Dynamic Capability input count.  */
+  u_int32_t dynamic_cap_out;  /* Dynamic Capability output count.  */
 
   /* BGP state count */
-  u_int32_t established;	/* Established */
-  u_int32_t dropped;		/* Dropped */
+  u_int32_t established;  /* Established */
+  u_int32_t dropped;    /* Dropped */
 
   /* Syncronization list and time.  */
   struct bgp_synchronize *sync[AFI_MAX][SAFI_MAX];
@@ -586,8 +586,8 @@ struct peer
 #define PEER_RMAP_TYPE_EXPORT         (1 << 7) /* neighbor route-map export */
 };
 
-#define PEER_PASSWORD_MINLEN	(1)
-#define PEER_PASSWORD_MAXLEN	(80)
+#define PEER_PASSWORD_MINLEN  (1)
+#define PEER_PASSWORD_MAXLEN  (80)
 
 /* This structure's member directly points incoming packet data
    stream. */
@@ -607,14 +607,14 @@ struct bgp_nlri
 };
 
 /* BGP versions.  */
-#define BGP_VERSION_4		                 4
+#define BGP_VERSION_4                    4
 
 /* Default BGP port number.  */
 #define BGP_PORT_DEFAULT                       179
 
 /* BGP message header and packet size.  */
-#define BGP_MARKER_SIZE		                16
-#define BGP_HEADER_SIZE		                19
+#define BGP_MARKER_SIZE                   16
+#define BGP_HEADER_SIZE                   19
 #define BGP_MAX_PACKET_SIZE                   4096
 
 /* BGP minimum message size.  */
@@ -625,14 +625,34 @@ struct bgp_nlri
 #define BGP_MSG_ROUTE_REFRESH_MIN_SIZE          (BGP_HEADER_SIZE + 4)
 #define BGP_MSG_CAPABILITY_MIN_SIZE             (BGP_HEADER_SIZE + 3)
 
+
 /* BGP message types.  */
-#define	BGP_MSG_OPEN		                 1
-#define	BGP_MSG_UPDATE		                 2
-#define	BGP_MSG_NOTIFY		                 3
-#define	BGP_MSG_KEEPALIVE	                 4
+#define BGP_MSG_OPEN                     1
+#define BGP_MSG_UPDATE                     2
+#define BGP_MSG_NOTIFY                     3
+#define BGP_MSG_KEEPALIVE                  4
 #define BGP_MSG_ROUTE_REFRESH_NEW                5
 #define BGP_MSG_CAPABILITY                       6
 #define BGP_MSG_ROUTE_REFRESH_OLD              128
+
+#define CIRCA_HEADER_SIZE                   19
+
+
+#define CIRCA_MSG_MIN_SIZE                      (CIRCA_HEADER_SIZE + 4)
+
+/* CIRCA message types.  */
+#define CIRCA_MSG_FIZZLE                        40
+#define CIRCA_MSG_CONVERGENCE                   41
+#define CIRCA_MSG_FIB_ENTRY                     42
+
+
+/* CIRCA message sub types.  */
+#define CIRCA_MSG                               63
+#define LINK_UP                                 64
+#define LINK_DOWN                               65
+#define NEW_POLICY                              66
+#define NEW_PREFIX                              67
+
 
 /* BGP open optional parameter.  */
 #define BGP_OPEN_OPT_AUTH                        1
@@ -674,7 +694,7 @@ struct bgp_nlri
 #define BGP_NOTIFY_FSM_ERR                       5
 #define BGP_NOTIFY_CEASE                         6
 #define BGP_NOTIFY_CAPABILITY_ERR                7
-#define BGP_NOTIFY_MAX	                         8
+#define BGP_NOTIFY_MAX                           8
 
 #define BGP_NOTIFY_SUBCODE_UNSPECIFIC            0
 
@@ -833,11 +853,11 @@ enum bgp_clear_type
 #define BGP_ERR_INSTANCE_MISMATCH               -26
 #define BGP_ERR_LOCAL_AS_ALLOWED_ONLY_FOR_EBGP  -27
 #define BGP_ERR_CANNOT_HAVE_LOCAL_AS_SAME_AS    -28
-#define BGP_ERR_TCPSIG_FAILED			-29
-#define BGP_ERR_NO_EBGP_MULTIHOP_WITH_TTLHACK	-30
-#define BGP_ERR_NO_IBGP_WITH_TTLHACK		-31
+#define BGP_ERR_TCPSIG_FAILED     -29
+#define BGP_ERR_NO_EBGP_MULTIHOP_WITH_TTLHACK -30
+#define BGP_ERR_NO_IBGP_WITH_TTLHACK    -31
 #define BGP_ERR_CANNOT_HAVE_LOCAL_AS_SAME_AS_REMOTE_AS    -32
-#define BGP_ERR_MAX				-33
+#define BGP_ERR_MAX       -33
 
 extern struct bgp_master *bm;
 
@@ -847,7 +867,7 @@ extern void bgp_reset (void);
 extern time_t bgp_clock (void);
 extern void bgp_zclient_reset (void);
 extern int bgp_nexthop_set (union sockunion *, union sockunion *, 
-		     struct bgp_nexthop *, struct peer *);
+         struct bgp_nexthop *, struct peer *);
 extern struct bgp *bgp_get_default (void);
 extern struct bgp *bgp_lookup (as_t, const char *);
 extern struct bgp *bgp_lookup_by_name (const char *);
@@ -855,7 +875,7 @@ extern struct peer *peer_lookup (struct bgp *, union sockunion *);
 extern struct peer_group *peer_group_lookup (struct bgp *, const char *);
 extern struct peer_group *peer_group_get (struct bgp *, const char *);
 extern struct peer *peer_lookup_with_open (union sockunion *, as_t, struct in_addr *,
-				    int *);
+            int *);
 
 /*
  * Peers are incredibly easy to memory leak
@@ -927,9 +947,9 @@ extern int peer_deactivate (struct peer *, afi_t, safi_t);
 extern int peer_afc_set (struct peer *, afi_t, safi_t, int);
 
 extern int peer_group_bind (struct bgp *, union sockunion *, struct peer_group *,
-		     afi_t, safi_t, as_t *);
+         afi_t, safi_t, as_t *);
 extern int peer_group_unbind (struct bgp *, struct peer *, struct peer_group *,
-		       afi_t, safi_t);
+           afi_t, safi_t);
 
 extern int peer_flag_set (struct peer *, u_int32_t);
 extern int peer_flag_unset (struct peer *, u_int32_t);

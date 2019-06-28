@@ -37,6 +37,17 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #define ORF_COMMON_PART_PERMIT     0x00 
 #define ORF_COMMON_PART_DENY       0x20 
 
+// *****************.  CIRCA related functions definitions *************
+
+
+
+extern void link_up_root_cause_event_handler(struct peer *, long);
+extern void link_down_root_cause_event_handler(struct peer *,  long);
+extern void simulate_root_cause_event(struct peer *,uint32_t );
+
+// *******************. CIRCA related function definition end here ************
+
+
 /* Packet send and receive function prototypes. */
 extern int bgp_read (struct thread *);
 extern int bgp_write (struct thread *);
