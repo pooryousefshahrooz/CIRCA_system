@@ -469,40 +469,20 @@ bgp_stop (struct peer *peer)
   zlog_info ("%%ADJCHANGE: neighbor %s Down %s", peer->host,
                    peer_down_str [(int) peer->last_reset]);
 
-      /* 
-        here we will send our grc link down message to our avatar
-
-      */
-
-
-      if (peer->avatar ==1)
-        {
-        avatar = peer;
-        zlog_debug ("we set  %s as our avatar ",peer->host);
-        }
-      // First we check if we are in ground mode
+      /*  here we will send our grc link down message to our avatar */
+      /* First we check if we are in ground mode */
+      }
       if (working_mode ==0)
-
-      // then we check if the router avatar has been set or not
+      /* then we check if the router avatar has been set or not */
       if (avatar)
-      if (strcmp(avatar->host , peer->host)!=0)
       {
-      /* we need to check if the connection with avatar at cloud has been established 
-      the connection could be not established at the beginning of the ground and cloud routers running
-      */
-
         zlog_debug ("we can send a GRC message to %s for the link down between us and router %s",avatar->host,peer->host);
 
-        circa_grc_msg_send(avatar,LINK_DOWN,peer->local_as *10);
+        circa_grc_msg_send(avatar,LINK_DOWN,peer->as *10);
       }
-      else
-        zlog_debug ("this link down is between us and our avatar  %s ,%s, %ld,%ld",avatar->host,peer->host,avatar->local_as ,peer->local_as);
       else
           zlog_debug ("************ we have not set the avatar peer yet!! **********");
-
-
-
-      }
+      
 
 
 
@@ -921,41 +901,44 @@ bgp_establish (struct peer *peer)
   /* bgp log-neighbor-changes of neighbor Up */
   if (bgp_flag_check (peer->bgp, BGP_FLAG_LOG_NEIGHBOR_CHANGES))
     zlog_info ("%%ADJCHANGE: neighbor %s Up", peer->host);
-
-
-
-  zlog_debug ("The avatar value for this peer is  %ld and the working mode is %ld",peer->avatar,working_mode);
+  /* first we check if the avatar property of the neighbor is 1(means it is avatar router) or not */
   if (peer->avatar ==1)
   {
-  avatar = peer;
-  zlog_debug ("we set  %s as our avatar ",peer->host);
+    /* we save peer structure in avatar as our avatar */
+    avatar = peer;
+    zlog_debug ("we set  %s as our avatar ",peer->host);
   }
-// First we check if we are in ground mode
-if (working_mode ==0)
+  else
+    {
+      /*First we check if we are in ground mode */
+      if (working_mode ==0)
+      {
+        /* then we check if the router avatar has been set or not */
+        if (avatar)
+        if (strcmp(avatar->host , peer->host)!=0) // we do not send a GRC message for link up or down between our avatar root cause event
+        {
+        /* we need to check if the connection with avatar at cloud has been established 
+        the connection could be not established at the beginning of the ground and cloud routers running
+        */
+          /* We set the target router id by multiplying the ground neighbor to 10 
 
-// then we check if the router avatar has been set or not
-if (avatar)
-if (strcmp(avatar->host , peer->host)!=0)
-{
-/* we need to check if the connection with avatar at cloud has been established 
-the connection could be not established at the beginning of the ground and cloud routers running
-*/
-  if (1==1)
-  {
-  // zlog_debug ("we can send a GRC message to %s for the link up between us and router %s",avatar->host,peer->host);
+          we can use a map from name of the oruter to ip address in a real system.  
 
-  zlog_debug ("we can send a GRC message to %s for the link up between us and router %s",avatar->host,peer->host);
+          Here in our implementation we assume that if the router id of the ground router
+          is 10, then the id of its avatar router id is 10*10 = 100. 
+          */
+        circa_grc_msg_send(avatar,LINK_UP,peer->as *10);
+     }
+       else // we do not need to send a GRC for the link up root cause event between us and our avatar
+      zlog_debug ("************ the link is between us and our avatar!! **********");
 
-  circa_grc_msg_send(avatar,LINK_UP,peer->local_as *10);
-  } 
-  else  
-    zlog_debug (" Errorr!!! we can not send a GRC message to %s for the link up between us and router %s as we have not established our connection with avatar",avatar->host,peer->host);
+      }
+    else
+        zlog_debug ("************ we are at cloud mode **********");
+    }
 
-}
-else
-  zlog_debug ("this link up is between us and our avatar  %s ,%s, %ld,%ld",avatar->host,peer->host,avatar->local_as ,peer->local_as);
-else
-    zlog_debug ("************ we have not set the avatar peer yet!! **********");
+
+
 
   /* graceful restart */
   UNSET_FLAG (peer->sflags, PEER_STATUS_NSF_WAIT);

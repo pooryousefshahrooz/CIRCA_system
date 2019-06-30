@@ -3401,37 +3401,52 @@ peer_port_vty (struct vty *vty, const char *ip_str, int afi,
 }
 
 
-/* Set neighbor's BGP avatar.  */
+/* Set neighbor's BGP avatar. 
+
+here we set the avatar_value for peer(neighbor) and 
+return CMD_SUCCESS if it  has been setted by 
+neighbor 1.1.0.1        avatar 0
+
+format.
+
+ */
+
 static int
 peer_avatar_vty (struct vty *vty, const char *ip_str, int afi, 
-               const char *port_str)
+               const char *avatar_str)
 {
   struct peer *peer;
-  u_int16_t port;
+  u_int16_t avatar_value;
   struct servent *sp;
 
   peer = peer_lookup_vty (vty, ip_str);
   if (! peer)
     return CMD_WARNING;
 
-  if (! port_str)
+  if (! avatar_str)
     { 
       sp = getservbyname ("bgp", "tcp");
-      port = (sp == NULL) ? BGP_PORT_DEFAULT : ntohs (sp->s_port);
+      avatar_value = (sp == NULL) ? BGP_PORT_DEFAULT : ntohs (sp->s_port);
     }
   else
     {
-      VTY_GET_INTEGER("port", port, port_str);
+      VTY_GET_INTEGER("port", avatar_value, avatar_str);
     }
 
-  peer_avatar_set (peer, port);
+  peer_avatar_set (peer, avatar_value);
 
   return CMD_SUCCESS;
 }
 
 
 
-/* Set specified peer's avatr value.  */
+/* read and set specified peer's avatr value.  
+the neighbor which is our avatar has been set by below command
+neighbor 1.1.0.1        avatar 1
+if it is not, 
+neighbor 1.1.0.1        avatar 0
+*/
+
 DEFUN (neighbor_avatar,
        neighbor_avatar_cmd,
        NEIGHBOR_CMD "avatar <0-65535>",
@@ -10202,7 +10217,13 @@ bgp_vty_init (void)
   install_element (BGP_NODE, &no_bgp_router_id_cmd);
   install_element (BGP_NODE, &no_bgp_router_id_val_cmd);
 
-  /* "bgp mode" commands. */
+  /* "bgp mode" commands.
+in conf file you can set the router ground or cloud mode by setting 
+below command for one of the routers neighbors(zero for ground mode and 1 for cloud mode):
+
+neighbor 1.1.0.1        mode 0 
+   */
+
   install_element (BGP_NODE, &bgp_mode_cmd);
   install_element (BGP_NODE, &no_bgp_mode_cmd);
   install_element (BGP_NODE, &no_bgp_mode_val_cmd);
@@ -10827,7 +10848,17 @@ bgp_vty_init (void)
   install_element (BGP_NODE, &no_bgp_mode_cmd);
   install_element (BGP_NODE, &no_bgp_mode_val_cmd);
 
-    /* "neighbor avatar" commands. */
+    /* "neighbor avatar" commands. 
+  in conf file we can set the router avatar by setting 
+below command for each of the neighbor. zero if the router is not an avatar router and
+ 1 if it is the router's avatar.
+for each neighbor, if the router is the router's avatar, we set 
+
+neighbor 1.1.0.1        avatar 1
+otherwise we set 
+neighbor 1.1.0.1        avatar 0
+
+*/
   install_element (BGP_NODE, &neighbor_avatar_cmd);
   install_element (BGP_NODE, &no_neighbor_avatar_cmd);
   install_element (BGP_NODE, &no_neighbor_avatar_val_cmd);

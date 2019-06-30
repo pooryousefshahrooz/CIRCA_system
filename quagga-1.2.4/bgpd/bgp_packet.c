@@ -54,17 +54,19 @@ extern long sequence_number;
 int stream_put_prefix (struct stream *, struct prefix *);
 
 
-// *********************************************** functions related to CIRCA implementation start here *******
+/* ************ related functions to CIRCA implementation start here ******* */
 
 
-
-
+/* 
+ this function will make the link up between the neighbor which its AS number is equal to 
+ passed target_router_id 
+*/
 
 void link_up_root_cause_event_handler(struct peer *peer, long target_router_id) 
 {
 
 /* here we will make the link up */
-    zlog_debug ("here we will make the link up");
+    zlog_debug ("here we will make the link up with %ld",target_router_id);
   struct peer *peer2;
   struct listnode *node, *nnode;
   struct bgp *bgp;
@@ -73,11 +75,14 @@ void link_up_root_cause_event_handler(struct peer *peer, long target_router_id)
   if (! bgp)
     return 0;
   
-  /* Upon receipt of an GRC link down message,: */
+  /* Upon receipt of an GRC link up message,: */
+
 
   for (ALL_LIST_ELEMENTS (bgp->peer, node, nnode, peer))
     {
-    zlog_debug ("we are going to make the link up with may %s",peer->host);
+      if (peer->as == target_router_id)
+          //bgp_timer_set (peer);
+          peer_activate(peer,AFI_IP, SAFI_UNICAST);
 
     }
 
@@ -87,7 +92,7 @@ void link_down_root_cause_event_handler(struct peer *peer, long target_router_id
 {
 
 /* here we will make the link down */
-    zlog_debug ("we are going to make the link down");
+    zlog_debug ("we are going to make the link down with %ld",target_router_id);
   struct peer *peer2;
   struct listnode *node, *nnode;
   struct bgp *bgp;
@@ -100,7 +105,11 @@ void link_down_root_cause_event_handler(struct peer *peer, long target_router_id
 
   for (ALL_LIST_ELEMENTS (bgp->peer, node, nnode, peer))
     {
-    zlog_debug ("we are going to make the link down with may %ld",target_router_id);
+      if (peer->as == target_router_id)
+          //peer_delete (peer);
+          //bgp_stop (peer);
+          peer_deactivate(peer,AFI_IP, SAFI_UNICAST);
+
 
     }
 
@@ -110,17 +119,12 @@ void link_down_root_cause_event_handler(struct peer *peer, long target_router_id
 
 }
 
-
+/*
+we first extract CIRCA sub type and then based on received sub type
+ of root cause event, we will simulate root cause event
+*/
 void simulate_root_cause_event(struct peer *peer,uint32_t size)
 {
-
-/* 
-
-here we first extract CIRCA sub type and then based on received sub type of root cause event, we will simulate root cause event
-
-
-*/
-
   long received_sub_type_code; 
   long received_seq_number;
   long received_seq_number2;
@@ -138,17 +142,14 @@ here we first extract CIRCA sub type and then based on received sub type of root
       return -1;
     }
 
-
   s = peer->ibuf;
   char result7[50]; 
   end = stream_pnt (s) + size;
-
   if (  size == 4 )
     {
     zlog_debug ("we have received a circa message but the lenght is 4 which is error");
       return -1;
     }
-
 
   /* RFC1771 6.3 If the Unfeasible Routes Length or Total Attribute
      Length is too large (i.e., if Unfeasible Routes Length + Total
@@ -166,23 +167,26 @@ here we first extract CIRCA sub type and then based on received sub type of root
     int size_of_stream = s->size;
     int end_of_s = s->endp;
 
-
   /* get root cause evnt id. */
-
   received_sub_type_code = stream_getl (s);
+
+  /* get sequence number . */
   received_seq_number = stream_getl (s);
 
+  /* get second sequence number which only being used in CBGP messages not in GRC messages . */
   received_seq_number2 = stream_getl (s);
 
+  /* get rtarget router id whic is AS number in our implementation. this could be the name of target router
+
+target router is the router which we need to simulate link up or link down with it. If for example, 
+we have a link up in ground between B and A, and B's avatar is receiving GRC message, the target router will be A's avatar.
+
+  */
   target_router_id = stream_getl (s);
-  zlog_debug (" %s target router id is %ld", "........",target_router_id);
-
-
   switch(received_sub_type_code)
   {
   case LINK_UP:// root cause event is link up
     zlog_debug (" %s this is a link up GRC", "........");
-
     link_up_root_cause_event_handler(peer,target_router_id);
   break;
   case LINK_DOWN: // root cause event is link down
@@ -210,10 +214,10 @@ here we first extract CIRCA sub type and then based on received sub type of root
 }
 
 
+/* ************** end of CIRCA related codes  ************** */
 
 
 
-// ************************************************ end of CIRCA related codes  **************
 /* Set up BGP packet marker and packet type. */
 static int
 bgp_packet_set_marker (struct stream *s, u_char type)

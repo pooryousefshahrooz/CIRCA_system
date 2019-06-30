@@ -40,12 +40,27 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 // *****************.  CIRCA related functions definitions *************
 
 
-
+/* 
+this function will simulate link up root cause event between
+ the avatar and the neighbor which its router id is equal to the second parameter
+*/
 extern void link_up_root_cause_event_handler(struct peer *, long);
+
+/* 
+this function will simulate link down root cause event between
+ the avatar and the neighbor which its router id is equal to the second parameter
+*/
 extern void link_down_root_cause_event_handler(struct peer *,  long);
+
+/* 
+this function will call 
+link up or link down root cause simulator functions based on the grc sub type value in the received GRC message from peer
+the second argument is the size of the packet which we need to check and place the positions of the field sin GRC messages.
+*/
+
 extern void simulate_root_cause_event(struct peer *,uint32_t );
 
-// *******************. CIRCA related function definition end here ************
+// *******************. CIRCA related function definition ends here ************
 
 
 /* Packet send and receive function prototypes. */
