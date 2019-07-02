@@ -51,6 +51,8 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_advertise.h"
 #include "bgpd/bgp_vty.h"
 extern long sequence_number;
+extern struct peer *avatar;
+extern int working_mode;
 int stream_put_prefix (struct stream *, struct prefix *);
 
 
@@ -91,7 +93,7 @@ void link_up_root_cause_event_handler(struct peer *peer, long target_router_id)
 void link_down_root_cause_event_handler(struct peer *peer, long target_router_id) 
 {
 
-/* here we will make the link down */
+/* here we will make the link down by deactivating the peer by calling peer_deactivate function*/
     zlog_debug ("we are going to make the link down with %ld",target_router_id);
   struct peer *peer2;
   struct listnode *node, *nnode;
@@ -390,6 +392,11 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
 static struct stream *
 bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
 {
+
+
+  if (avatar)
+    if(strcmp(avatar->host , peer->host)==0)
+      return NULL;
   struct stream *s;
   struct stream *snlri;
   struct bgp_adj_out *adj;

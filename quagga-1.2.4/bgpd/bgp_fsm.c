@@ -20,7 +20,6 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 02111-1307, USA.  */
 
 #include <zebra.h>
-
 #include "linklist.h"
 #include "prefix.h"
 #include "vty.h"
@@ -939,6 +938,7 @@ bgp_establish (struct peer *peer)
 
 
 
+  zlog_debug ("************ ********************** after all CIRCA stuff **********");
 
   /* graceful restart */
   UNSET_FLAG (peer->sflags, PEER_STATUS_NSF_WAIT);
@@ -1014,8 +1014,16 @@ bgp_establish (struct peer *peer)
   if (CHECK_FLAG (peer->af_cap[afi][safi], PEER_CAP_ORF_PREFIX_SM_RCV)
       || CHECK_FLAG (peer->af_cap[afi][safi], PEER_CAP_ORF_PREFIX_SM_OLD_RCV))
     SET_FLAG (peer->af_sflags[afi][safi], PEER_STATUS_ORF_WAIT_REFRESH);
-
+  /* we do not advertise routes to our avatar! */
   bgp_announce_route_all (peer);
+  // if (avatar)
+  // {
+  //   if(strcmp(avatar->host , peer->host)!=0)
+  //       bgp_announce_route_all (peer);
+  // }
+  // else
+  //     bgp_announce_route_all (peer);
+
 
   BGP_TIMER_ON (peer->t_routeadv, bgp_routeadv_timer, 1);
 
