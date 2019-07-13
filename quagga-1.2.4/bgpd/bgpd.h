@@ -124,14 +124,11 @@ struct sent{
 /* ************************ CIRCA system data structure defintion ends here */
 
 /* ************************ CIRCA system function defintion starts here */
-
-extern void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix);/* Done */
-extern void print_update_prefix_list(struct update_prefix_list ** head_ref); /* Done */
-extern void add_new_time_stamp(struct time_stamp_ds** head_ref,char * event_id,char * time_stamp_id,struct aspath  ASPATH,long AS_owner_id,struct peer *peer,struct update_prefix_list pl);
-extern void make_update_prefix_list_empty(struct update_prefix_list ** head_ref); /* Done */
-extern struct list_of_time_stamp  get_list_of_time_stamps(struct sent** head_ref,char * event_id);
-extern void append_to_time_stamp_list(struct time_stamp_ds** head_ref,struct list_of_time_stamp tsl,char *event_id,char * time_stamp_id, struct aspath ASPATH,long AS_owner_id,struct peer *peer,struct update_prefix_list pl);
-extern void delete_prefix_from_update_prefix_list(struct update_prefix_list** head_ref,char * prefix, struct aspath ASPATH,struct peer * peer);
+extern char *  delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,struct aspath * ASPATH,char passed_event_id[],char passed_time_stamp[]);
+extern void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl);
+extern void print_time_stamp(struct time_stamp_ds ** head_ref);
+extern void print_update_prefix_list(struct update_prefix_list ** head_ref);
+extern void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct aspath ASPATH);
 
 
 extern bool check_if_sent_is_empty(struct sent** head_ref,char *event_id); /* allmost Done! */

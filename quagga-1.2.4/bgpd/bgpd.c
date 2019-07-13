@@ -94,17 +94,107 @@ We define our function definition for CIRCA system here
 /*
  * We will add a new prefix to the list
  */
-void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix)
+void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct aspath ASPATH)
 {
-    struct update_prefix_list * new_node6 = (struct update_prefix_list*) malloc(sizeof(struct update_prefix_list));
-    
-    //zlog_debug("the passed prefix to add_prefix_to_prefix_list function is %s", prefix);
-    strncpy(new_node6 -> prefix ,prefix, 50);
-    new_node6->next = (*head_ref);
-    //zlog_debug("the saved prefix in add_prefix_to_prefix_list function is %s", new_node6 -> prefix);
-    (*head_ref) = new_node6;
+    struct update_prefix_list * new_node = (struct update_prefix_list*) malloc(sizeof(struct update_prefix_list));
+    strncpy(new_node -> prefix ,prefix, PREFIX_LENGTH);
+    new_node->next = (*head_ref);
+    (*head_ref) = new_node;
+}
+
+
+/* we will preint the list of prefixes we have received in a update packet */
+void print_update_prefix_list(struct update_prefix_list ** head_ref)
+{
+    struct update_prefix_list * temp = (*head_ref);
+    zlog_debug("*********** going to print prefix list ********** ");
+    while(temp != NULL)
+    {
+        zlog_debug("this is the prefix %s", temp -> prefix);
+        temp = temp -> next;
+    }
+    zlog_debug("print prefix list ends here ");
+}
+
+
+/* we will preint the list of prefixes for each event id and time stamp we have received */
+void print_time_stamp(struct time_stamp_ds ** head_ref)
+{
+    struct time_stamp_ds * temp = (*head_ref);
+    while(temp != NULL)
+    {
+        //printf("this is the event id %s \n", temp -> event_id);
+        struct update_prefix_list * my_temp = temp -> upl ;
+        //printf("********** going to print the prefix list ******** \n");
+        while(my_temp != NULL)
+        {
+            //printf("this is the prefix  %s \n", my_temp -> prefix);
+            my_temp = my_temp -> next;
+        }
+        temp = temp -> next;
+    }
+}
+
+/* We add a new time stamp and all of the prefixes received int he update belong to that time stamp */
+void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl)
+
+{
+    struct time_stamp_ds * new_node = (struct time_stamp_ds*) malloc(sizeof(struct time_stamp_ds));
+    strncpy(new_node -> event_id ,in_event_id, EVENT_ID_LENGTH);
+    strncpy(new_node -> time_stamp ,in_time_stamp_id, TIME_STAMP_LENGTH);
+    new_node->upl = pl;
+    new_node->saved_prefixes = pl;
+    new_node->next = (*head_ref);
+    (*head_ref) = new_node;
 
 }
+
+/* We delete a prefix from the list of the prefixes  */
+char *  delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,struct aspath * ASPATH,char passed_event_id[],char passed_time_stamp[])
+{
+    struct time_stamp_ds * temp = (*head_ref);
+    while(temp != NULL)
+    {
+        printf("this is the event id %s \n", temp -> event_id);
+        struct update_prefix_list * my_temp = temp -> upl ;
+        printf("********** going to check the prefix list ******** \n");
+        while(my_temp != NULL)
+            {
+                printf("this is the prefix  %s %s \n", my_temp -> prefix,in_prefix);
+                if(strcmp (my_temp -> prefix,in_prefix)==0)
+                    {
+                        temp -> upl = my_temp->next;   // Changed head
+                        free(my_temp);
+                        strncpy(passed_event_id ,temp->event_id, 20);
+                        strncpy(passed_time_stamp ,temp->time_stamp, 20);
+                        if (temp -> upl -> prefix == NULL)
+                        {
+                            printf("this is empty........  \n");
+                            char *char_test[20];
+//                            strncpy(char_test ,'1', 20);
+//                            strncpy(passed_empty_variable ,char_test, 20);
+                            return 2;
+                        }
+                        else {
+                            int i=2;
+//                            char * char_test2[20];
+//                            strncpy(char_test2 ,'0', 20);
+//                            strncpy(passed_empty_variable ,char_test2, 20);
+                            return 1;
+                        }
+
+                        printf("this is the new node in prefix list  %s \n", temp -> upl -> prefix);
+                        return 1;
+                    }
+                my_temp = my_temp -> next;
+            }
+        temp = temp -> next;
+    }
+    return -1;
+
+}
+
+
 
 void add_to_sent(struct sent** head_ref, char *in_time_stamp, char * in_event_id,struct peer* in_neighbour){
     struct sent * new_node6 = (struct sent*) malloc(sizeof(struct sent));
@@ -148,17 +238,6 @@ bool check_if_sent_is_empty(struct sent** head_ref,char *  event_id){
   }
 }
 
-void print_update_prefix_list(struct update_prefix_list ** head_ref)
-{
-    struct update_prefix_list * temp = (*head_ref);
-    zlog_debug("*********** going to print prefix list ********** ");
-    while(temp != NULL)
-    {
-        zlog_debug("this is the prefix %s", temp -> prefix);
-        temp = temp -> next;
-    }
-    zlog_debug("print prefix list ends here ");
-} 
 
 /*
  * We will clear the update_prefix_list data structure
