@@ -63,6 +63,13 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 extern const char *bgp_origin_str[];
 extern const char *bgp_origin_long_str[];
 
+/* we import CIRCA global variables */
+extern long sequence_number;
+extern struct peer *avatar;
+extern int working_mode;
+extern struct peer *a_peer_for_maintating_head_of_data_structure;
+struct update_prefix_list* update_prefix_list_head = NULL; 
+
 static struct bgp_node *
 bgp_afi_node_get (struct bgp_table *table, afi_t afi, safi_t safi, struct prefix *p,
 		  struct prefix_rd *prd)
@@ -1463,10 +1470,13 @@ static int
 bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
                                struct bgp_node *rn, afi_t afi, safi_t safi)
 {
+
+
+  zlog_debug ("start. bgp_process_announce_selected:");
   struct prefix *p;
   struct attr attr;
   struct attr_extra extra;
-
+  char buf[SU_ADDRSTRLEN];
   memset (&attr, 0, sizeof(struct attr));
   memset (&extra, 0, sizeof(struct attr_extra));
 
@@ -1494,7 +1504,12 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
       /* Announcement to peer->conf.  If the route is filtered,
          withdraw it. */
         if (selected && bgp_announce_check (selected, peer, p, &attr, afi, safi))
+        {
+          zlog_debug ("1. bgp_process_announce_selected: we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+          //zlog_debug ("+++++++++++time stamp for this prefix %s  is %ld",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),attr.time_stamp_id);
+
           bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
+        }
         else
           bgp_adj_out_unset (rn, peer, p, afi, safi);
         break;
@@ -1503,11 +1518,15 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
            withdraw it. */
         if (selected && 
             bgp_announce_check_rsclient (selected, peer, p, &attr, afi, safi))
+        {
+          zlog_debug ("2. bgp_process_announce_selected : we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
           bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
+        }
         else
 	  bgp_adj_out_unset (rn, peer, p, afi, safi);
         break;
     }
+  zlog_debug ("end. bgp_process_announce_selected:");
 
   bgp_attr_flush (&attr);
   return 0;
@@ -2120,6 +2139,8 @@ bgp_update_main (struct peer *peer, struct prefix *p, struct attr *attr,
 	    afi_t afi, safi_t safi, int type, int sub_type,
 	    struct prefix_rd *prd, u_char *tag, int soft_reconfig)
 {
+zlog_debug ("*************************start of bgp_update_main function for peer   %s ",peer->host);
+
   int ret;
   int aspath_loop_count = 0;
   struct bgp_node *rn;
@@ -2292,7 +2313,6 @@ bgp_update_main (struct peer *peer, struct prefix *p, struct attr *attr,
 	      peer->host,
 	      inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),
 	      p->prefixlen);
-
       /* graceful restart STALE flag unset. */
       if (CHECK_FLAG (ri->flags, BGP_INFO_STALE))
 	bgp_info_unset_flag (rn, ri, BGP_INFO_STALE);
@@ -2383,6 +2403,11 @@ bgp_update_main (struct peer *peer, struct prefix *p, struct attr *attr,
 	    p->prefixlen);
     }
 
+
+// add_prefix_to_prefix_list(&update_prefix_list_head,inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
+// print_update_prefix_list(&update_prefix_list_head);
+
+
   /* Make new BGP info. */
   new = info_make(type, sub_type, peer, attr_new, rn);
 
@@ -2434,6 +2459,8 @@ bgp_update_main (struct peer *peer, struct prefix *p, struct attr *attr,
   /* Process change. */
   bgp_process (bgp, rn, afi, safi);
 
+  //zlog_debug ("*************************end of bgp_update_main function for peer   %s ",peer->host);
+  //print_update_prefix_list(&update_prefix_list_head);
   return 0;
 
   /* This BGP update is filtered.  Log the reason then update BGP
@@ -2561,7 +2588,7 @@ bgp_default_originate (struct peer *peer, afi_t afi, safi_t safi, int withdraw)
   struct bgp_node *rn;
   struct bgp_info *ri;
   int ret = RMAP_DENYMATCH;
-  
+  char buf[SU_ADDRSTRLEN];
   if (!(afi == AFI_IP || afi == AFI_IP6))
     return;
   
@@ -2655,11 +2682,14 @@ static void
 bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
                    struct bgp_table *table, int rsclient)
 {
+
+  zlog_debug ("start bgp_announce_table");
+
   struct bgp_node *rn;
   struct bgp_info *ri;
   struct attr attr;
   struct attr_extra extra;
-
+  char buf[SU_ADDRSTRLEN];
   memset(&extra, 0, sizeof(extra));
 
   if (! table)
@@ -2673,18 +2703,29 @@ bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
   attr.extra = &extra;
 
   for (rn = bgp_table_top (table); rn; rn = bgp_route_next(rn))
+   {
+    zlog_debug ("for  prefix %s and from :",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
     for (ri = rn->info; ri; ri = ri->next)
       if (CHECK_FLAG (ri->flags, BGP_INFO_SELECTED) && ri->peer != peer)
 	{
          if ( (rsclient) ?
               (bgp_announce_check_rsclient (ri, peer, &rn->p, &attr, afi, safi))
               : (bgp_announce_check (ri, peer, &rn->p, &attr, afi, safi)))
-	    bgp_adj_out_set (rn, peer, &rn->p, &attr, afi, safi, ri);
+      {
+        //inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN)
+      zlog_debug ("bgp_announce_table: we will send prefix %s  to %s",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+	    zlog_debug ("+++++++++++time stamp for this prefix %s  is %ld",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),(attr).time_stamp_id);
+
+      bgp_adj_out_set (rn, peer, &rn->p, &attr, afi, safi, ri);
+      }
 	  else
 	    bgp_adj_out_unset (rn, peer, &rn->p, afi, safi);
 	}
+}
 
   bgp_attr_flush_encap(&attr);
+  zlog_debug ("end bgp_announce_table");
+
 }
 
 void
@@ -3373,7 +3414,7 @@ bgp_nlri_parse_ip (struct peer *peer, struct attr *attr,
                 peer->host);
       return -1;
     }
-  
+  /* add the prefix to the time stamp data structure */
   return 0;
 }
 

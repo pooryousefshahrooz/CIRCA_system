@@ -37,6 +37,12 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_fsm.h"
 #include "bgpd/bgp_mplsvpn.h"
 
+
+/* we import CIRCA global variables here*/
+extern long sequence_number;
+extern struct peer *avatar;
+extern int working_mode;
+
 /* BGP advertise attribute is used for pack same attribute update into
    one packet.  To do that we maintain attribute hash in struct
    peer.  */
@@ -222,6 +228,12 @@ bgp_adj_out_set (struct bgp_node *rn, struct peer *peer, struct prefix *p,
 		 struct attr *attr, afi_t afi, safi_t safi,
 		 struct bgp_info *binfo)
 {
+    /* we will not set the update result in the avatar list 
+    in other word, we will not advertise to our avatar */
+    if (avatar)
+      if(strcmp(avatar->host , peer->host)==0)
+          return;
+            
   struct bgp_adj_out *adj = NULL;
   struct bgp_advertise *adv;
 

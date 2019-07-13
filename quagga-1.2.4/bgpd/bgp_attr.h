@@ -47,6 +47,8 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #define BGP_ATTR_MIN_LEN        3       /* Attribute flag, type length. */
 #define BGP_ATTR_DEFAULT_WEIGHT 32768
 
+
+
 struct bgp_attr_encap_subtlv {
     struct bgp_attr_encap_subtlv	*next;		/* for chaining */
     uint16_t				type;
@@ -125,6 +127,13 @@ struct attr
   
   /* Path origin attribute */
   u_char origin;
+
+
+  /* Root Cause Event ID */
+  int time_stamp_id;
+  char  event_id[50];
+  // char  * time_stamp_id[TIME_STAMP_LENGTH];
+
 };
 
 /* Router Reflector related structure. */

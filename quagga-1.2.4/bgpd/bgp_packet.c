@@ -50,6 +50,14 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_encap.h"
 #include "bgpd/bgp_advertise.h"
 #include "bgpd/bgp_vty.h"
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <string.h>
+/* we import CIRCA global variables */
 extern long sequence_number;
 extern struct peer *avatar;
 extern int working_mode;
@@ -58,6 +66,100 @@ int stream_put_prefix (struct stream *, struct prefix *);
 
 /* ************ related functions to CIRCA implementation start here ******* */
 
+extern struct peer *a_peer_for_maintating_head_of_data_structure;
+
+
+// A linked list node 
+struct Node 
+{ 
+  int data; 
+  struct Node *next; 
+}; 
+  
+/* Given a reference (pointer to pointer) to the head of a list and  
+   an int, inserts a new node on the front of the list. */
+void push(struct Node** head_ref, int new_data) 
+{ 
+    /* 1. allocate node */
+    struct Node* new_node = (struct Node*) malloc(sizeof(struct Node)); 
+  
+    /* 2. put in the data  */
+    new_node->data  = new_data; 
+  
+    /* 3. Make next of new node as head */
+    new_node->next = (*head_ref); 
+  
+    /* 4. move the head to point to the new node */
+    (*head_ref)    = new_node; 
+} 
+  
+/* Given a node prev_node, insert a new node after the given  
+   prev_node */
+void insertAfter(struct Node* prev_node, int new_data) 
+{ 
+    /*1. check if the given prev_node is NULL */
+    if (prev_node == NULL) 
+    { 
+      printf("the given previous node cannot be NULL"); 
+      return; 
+    } 
+  
+    /* 2. allocate new node */
+    struct Node* new_node =(struct Node*) malloc(sizeof(struct Node)); 
+  
+    /* 3. put in the data  */
+    new_node->data  = new_data; 
+  
+    /* 4. Make next of new node as next of prev_node */
+    new_node->next = prev_node->next; 
+  
+    /* 5. move the next of prev_node as new_node */
+    prev_node->next = new_node; 
+} 
+  
+/* Given a reference (pointer to pointer) to the head 
+   of a list and an int, appends a new node at the end  */
+void append(struct Node** head_ref, int new_data) 
+{ 
+    /* 1. allocate node */
+    struct Node* new_node = (struct Node*) malloc(sizeof(struct Node)); 
+  
+    struct Node *last = *head_ref;  /* used in step 5*/
+  
+    /* 2. put in the data  */
+    new_node->data  = new_data; 
+  
+    /* 3. This new node is going to be the last node, so make next of 
+          it as NULL*/
+    new_node->next = NULL; 
+  
+    /* 4. If the Linked List is empty, then make the new node as head */
+    if (*head_ref == NULL) 
+    { 
+       *head_ref = new_node; 
+       return; 
+    } 
+  
+    /* 5. Else traverse till the last node */
+    while (last->next != NULL) 
+        last = last->next; 
+  
+    /* 6. Change the next of last node */
+    last->next = new_node; 
+    return; 
+} 
+  
+// This function prints contents of linked list starting from head 
+void printList(struct Node *node) 
+{ 
+  while (node != NULL) 
+  { 
+     //printf(" %d ", node->data); 
+    zlog_debug ("here is the data of list %d",node->data);
+
+     node = node->next; 
+  } 
+} 
 
 /* 
  this function will make the link up between the neighbor which its AS number is equal to 
@@ -392,11 +494,6 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
 static struct stream *
 bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
 {
-
-
-  if (avatar)
-    if(strcmp(avatar->host , peer->host)==0)
-      return NULL;
   struct stream *s;
   struct stream *snlri;
   struct bgp_adj_out *adj;
@@ -410,7 +507,7 @@ bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
   int space_needed = 0;
   size_t mpattrlen_pos = 0;
   size_t mpattr_pos = 0;
-
+  char buf[SU_ADDRSTRLEN];
   s = peer->work;
   stream_reset (s);
   snlri = peer->scratch;
@@ -454,6 +551,31 @@ bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
      * one byte message type.
      */
     bgp_packet_set_marker (s, BGP_MSG_UPDATE);
+    zlog_debug(" ***************************************************** this is the received timestamp %ld ", adv->baa->attr->time_stamp_id);
+    //zlog_debug(" ***************************************************** this is the received event id %s ", adv->baa->attr->event_id);
+
+if (strcmp(adv->baa->attr->aspath->str,"")!=0)
+{
+    //zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++This is  ASPATH of this prefix  %s %sdddd ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
+
+    char my_delim[]= " ";
+
+    char *my_ptr = strtok(adv->baa->attr->aspath->str, my_delim);
+    int my_aspath_array[4];
+    int i=0;
+
+    while(my_ptr != NULL)
+    {
+        my_aspath_array[i] =atoi(my_ptr);
+        i = i+1;
+        my_ptr = strtok(NULL, my_delim);
+    }
+
+    zlog_debug(" ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ this is the first as in the next steps of a ASPATH %d ", my_aspath_array[0]);
+
+}
+else
+      zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We do not have ASPATH of this prefix  %s %s ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
 
     /* 2: withdrawn routes length */
     stream_putw (s, 0);
@@ -1972,6 +2094,10 @@ bgp_nlri_parse (struct peer *peer, struct attr *attr, struct bgp_nlri *packet)
 static int
 bgp_update_receive (struct peer *peer, bgp_size_t size)
 {
+
+
+//struct sent* sent_head = NULL; 
+//add_to_sent(&sent_head,"1234", "12321222",peer);
   int ret, nlri_ret;
   u_char *end;
   struct stream *s;
@@ -2006,6 +2132,17 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
   memset (&nlris, 0, sizeof nlris);
 
   attr.extra = &extra;
+  attr.time_stamp_id =1234;
+
+  // strncpy(attr.time_stamp_id, 'time_stamp_123', 15);
+  strncpy(attr.event_id, '999,444', 50);
+
+  char  in_received_time_stamp[50];
+  strncpy(in_received_time_stamp, "888,444", 50);
+  zlog_debug ("+++++++++++ %s ++++++++++++++++++++++++ %s ",in_received_time_stamp,attr.event_id);
+
+
+  
 
   s = peer->ibuf;
   end = stream_pnt (s) + size;
@@ -2202,6 +2339,7 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
           return -1;
         }
     }
+    /* we can check the list of prefixes for the timestamp and found if it is empty or not */
   
   /* EoR checks.
    *

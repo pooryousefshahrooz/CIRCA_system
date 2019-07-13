@@ -45,6 +45,8 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #ifdef HAVE_SNMP
 #include "bgpd/bgp_snmp.h"
 #endif /* HAVE_SNMP */
+
+/* we import CIRCA global variables */
 extern struct peer *avatar;
 extern int working_mode;
 /* BGP FSM (finite state machine) has three types of functions.  Type
@@ -920,26 +922,16 @@ bgp_establish (struct peer *peer)
         the connection could be not established at the beginning of the ground and cloud routers running
         */
           /* We set the target router id by multiplying the ground neighbor to 10 
-
-          we can use a map from name of the oruter to ip address in a real system.  
-
           Here in our implementation we assume that if the router id of the ground router
           is 10, then the id of its avatar router id is 10*10 = 100. 
           */
         circa_grc_msg_send(avatar,LINK_UP,peer->as *10);
      }
        else // we do not need to send a GRC for the link up root cause event between us and our avatar
-      zlog_debug ("************ the link is between us and our avatar!! **********");
+         zlog_debug ("************ the link is between us and our avatar!! **********");
 
       }
-    else
-        zlog_debug ("************ we are at cloud mode **********");
     }
-
-
-
-  zlog_debug ("************ ********************** after all CIRCA stuff **********");
-
   /* graceful restart */
   UNSET_FLAG (peer->sflags, PEER_STATUS_NSF_WAIT);
   for (afi = AFI_IP ; afi < AFI_MAX ; afi++)
@@ -1014,16 +1006,14 @@ bgp_establish (struct peer *peer)
   if (CHECK_FLAG (peer->af_cap[afi][safi], PEER_CAP_ORF_PREFIX_SM_RCV)
       || CHECK_FLAG (peer->af_cap[afi][safi], PEER_CAP_ORF_PREFIX_SM_OLD_RCV))
     SET_FLAG (peer->af_sflags[afi][safi], PEER_STATUS_ORF_WAIT_REFRESH);
-  /* we do not advertise routes to our avatar! */
-  bgp_announce_route_all (peer);
-  // if (avatar)
-  // {
-  //   if(strcmp(avatar->host , peer->host)!=0)
-  //       bgp_announce_route_all (peer);
-  // }
-  // else
-  //     bgp_announce_route_all (peer);
-
+  /* we do not advertise our routes to our avatar  */
+  if (avatar)
+  {
+      if(strcmp(avatar->host , peer->host)!=0)
+        bgp_announce_route_all (peer);
+  }
+  else
+    bgp_announce_route_all (peer);
 
   BGP_TIMER_ON (peer->t_routeadv, bgp_routeadv_timer, 1);
 
