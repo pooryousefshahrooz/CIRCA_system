@@ -10,15 +10,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="4122000b-809f-46f0-b890-0e482b09ca21" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/bgp_advertise.c" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_advertise.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgp_attr.h" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_attr.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgp_main.c" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgp_packet.c" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_packet.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgp_packet.h" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_packet.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bgp_route.c" beforeDir="false" afterPath="$PROJECT_DIR$/bgp_route.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgpd.c" beforeDir="false" afterPath="$PROJECT_DIR$/bgpd.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bgpd.h" beforeDir="false" afterPath="$PROJECT_DIR$/bgpd.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../quagga.zip" beforeDir="false" afterPath="$PROJECT_DIR$/../../quagga.zip" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -113,6 +105,7 @@
     </panes>
   </component>
   <component name="PropertiesComponent">
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="node.js.detected.package.eslint" value="true" />

@@ -1480,7 +1480,7 @@ bgp_best_selection (struct bgp *bgp, struct bgp_node *rn,
 
 static int
 bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
-                               struct bgp_node *rn, afi_t afi, safi_t safi,int fizzling_value)
+                               struct bgp_node *rn, afi_t afi, safi_t safi,int *fizzling_value)
 {
 
 
@@ -1524,7 +1524,7 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
             if(strcmp(avatar->host,peer->host)!=0)
             {
               zlog_debug ("1. bgp_process_announce_selected: we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
-              fizzling_value = 1;
+              *fizzling_value = 1;
               bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
         }
           //print_time_stamp(&time_stamp_ds_head);
@@ -1689,6 +1689,7 @@ bgp_process_main (struct work_queue *wq, void *data)
 
 
   int fizzling_value = 0;
+  int not_fizzled=1;
 
   /* Best path selection. */
   bgp_best_selection (bgp, rn, &old_and_new, afi, safi);
@@ -1734,6 +1735,10 @@ bgp_process_main (struct work_queue *wq, void *data)
     {
       //zlog_debug ("*************    we will check peer %s ************",peer->host);
       bgp_process_announce_selected (peer, new_select, rn, afi, safi,&fizzling_value);
+      if(fizzling_value==1)
+      {
+        not_fizzled=0;
+      }
     }
 
   /* FIB update. */
@@ -1760,7 +1765,7 @@ bgp_process_main (struct work_queue *wq, void *data)
   
   UNSET_FLAG (rn->flags, BGP_NODE_PROCESS_SCHEDULED);
 
-  if (fizzling_value==0)
+  if (fizzling_value==0 && not_fizzled==1)
   {
   zlog_debug ("2************************************* we checked prefix %s for all neighbors and this has fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
   message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
