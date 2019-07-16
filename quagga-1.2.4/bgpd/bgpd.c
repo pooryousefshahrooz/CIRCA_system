@@ -332,16 +332,46 @@ void add_to_sent(struct sent** head_ref, char * in_time_stamp, char * event_id,s
 
 {
     struct sent * new_node = (struct sent*) malloc(sizeof(struct sent));
-    strncpy(new_node ->time_stamp ,in_time_stamp, 20);
+    strncpy(new_node ->time_stamp ,in_time_stamp, TIME_STAMP_LENGTH);
     new_node -> sent_to_peer = in_neighbour;
-    strncpy(new_node -> event_id, event_id, 20);
+    strncpy(new_node -> event_id, event_id, EVENT_ID_LENGTH);
     new_node->next = (*head_ref);
     /* 4. move the head to point to the new node */
     (*head_ref) = new_node;
 }
+bool check_if_we_are_the_owner_of_event(struct peer * peer,long router_id_of_event){
+ zlog_debug("for check_if_we_are_the_owner_of_event we will compare  %ld and %ld ",peer->local_as,router_id_of_event);
+
+if(peer->local_as==router_id_of_event)
+{
+    zlog_debug("we are the owner");
+    return true;
+}
+else
+{
+    zlog_debug("we are not the owner");
+    return false;
+}
+
+}
+
+
+void print_sent(struct sent ** head_ref){
+    struct sent * temp = (*head_ref);
+    zlog_debug("*********** going to print sent list ********** ");
+    while(temp != NULL)
+    {
+        //zlog_debug("Going to print node %d of the sent list");
+        zlog_debug("this is the time_stamp %s", temp -> time_stamp);
+        zlog_debug("this is the event_id %s", temp -> event_id);
+        temp = temp -> next;
+    }
+    zlog_debug("print sent list ends here ");
+}
 
 bool check_if_sent_is_empty(struct sent** head_ref,char *event_id) /* allmost Done! */
 {
+    zlog_debug("*********** going to check if sent for event id %s is empty or not  ********** ",event_id);
     struct sent * temp = (*head_ref);
     struct sent * prev = (struct sent *) malloc(sizeof(struct sent));
     if(temp!=NULL)
@@ -350,9 +380,10 @@ bool check_if_sent_is_empty(struct sent** head_ref,char *event_id) /* allmost Do
         {
             prev = temp;
             temp = temp -> next;
+
         }
         if(temp == NULL){
-            //zlog_debug("sent is empty");
+            zlog_debug("sent is empty");
             return true;
         }
         if (strcmp(temp -> event_id , event_id)==0)
@@ -362,7 +393,7 @@ bool check_if_sent_is_empty(struct sent** head_ref,char *event_id) /* allmost Do
     }
     else
     {
-        //zlog_debug("sent is empty");
+        zlog_debug("sent is empty");
         return true;
     }
 }
@@ -392,6 +423,23 @@ void delete_from_sent(struct sent** head_ref,char *received_time_stamp,char *in_
 
 }
 
+struct time_stamp_ds * get_time_stamp(struct time_stamp_ds ** head_ref,int as_number)
+{
+    struct time_stamp_ds* temp = (*head_ref);
+    struct time_stamp_ds* result = NULL;
+    while(temp != NULL){
+        if(temp -> received_from_peer->as == as_number){
+            result = temp;
+            break;
+        }else{
+           // zlog_debug("not equal lets move");
+            temp = temp-> next;
+        }
+
+    }
+    return result;
+}
+
 struct cause * getcause(struct cause** head_ref,char * received_time_stamp,char *in_event_id)/* Done */
 {
     struct cause* temp = (*head_ref);
@@ -412,12 +460,12 @@ void addcause(struct cause** head_ref,char *be_sending_time_stamp,char *causalit
 
 {
     struct cause* new_node = (struct cause *) malloc(sizeof(struct cause));
-    strncpy(new_node -> sending_timestamp, be_sending_time_stamp, 20);
-    printf("passed be_sending_time_stamp  %s!\n",be_sending_time_stamp);
-    printf("passed in_event_id  %s!\n",in_event_id);
-    printf("passed causality  %s!\n",causality);
-    strncpy(new_node -> event_id, in_event_id, 20);
-    strncpy(new_node -> received_timestamp, causality, 20);
+    strncpy(new_node -> sending_timestamp, be_sending_time_stamp, TIME_STAMP_LENGTH);
+    zlog_debug("passed be_sending_time_stamp  %s!",be_sending_time_stamp);
+    zlog_debug("passed in_event_id  %s!",in_event_id);
+    zlog_debug("passed causality  %s!",causality);
+    strncpy(new_node -> event_id, in_event_id, EVENT_ID_LENGTH);
+    strncpy(new_node -> received_timestamp, causality, TIME_STAMP_LENGTH);
     new_node -> received_from_peer = peer;
     new_node->next = (*head_ref);
     (*head_ref) = new_node;
@@ -430,7 +478,7 @@ void insert_in_converged(struct converged ** head_ref, char * in_event_id){
 
     while(temp != NULL){
         if(strcmp(temp -> event_id , in_event_id)==0){
-            printf("\nthe event_id already exists \n");
+            zlog_debug("the event_id already exists ");
             return;
         }else{
             temp = temp -> next;
@@ -458,9 +506,9 @@ void set_converged_value_true(struct converged ** head_ref, char * in_event_id){
         }
     }
     if(found == 1){
-        printf(" Successfully set the converged value to true of the event with event_id %s \n", temp -> event_id );
+        zlog_debug(" Successfully set the converged value to true of the event with event_id %s ", temp -> event_id );
     }else{
-        printf("the event with event_id %s does not exixt\n", in_event_id );
+        zlog_debug("the event with event_id %s does not exixt", in_event_id );
     }
 }
 
@@ -484,11 +532,29 @@ int get_converged_value(struct converged ** head_ref, char * in_event_id){
 }
 
 
+void remove_neighbours_event_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id){
+    struct neighbours_sent_to * temp = (*head_ref);
+    struct neighbours_sent_to * result = NULL;
+    while(temp != NULL){
+       // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
+        if(strcmp (temp -> event_id,in_event_id)==0){
+            *head_ref = temp->next;   // Changed head
+            free(temp);               // free old head
+            //zlog_debug("successfully removed all neighbors of prefix %s",in_prefix);
+            return;
+            break;
+        }else{
+            temp = temp -> next;
+        }
+    }
+    return;
+}
+
 
 void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer_list * in_peer_list) /* Done */
 {
     struct neighbours_sent_to * new_node3 = (struct neighbours_sent_to *) malloc(sizeof(struct neighbours_sent_to));
-    strncpy(new_node3 -> event_id, in_event_id, 20);
+    strncpy(new_node3 -> event_id, in_event_id, EVENT_ID_LENGTH);
     //new_node3 -> key_prefix= in_prefix;
     new_node3 -> peer_list = in_peer_list;
     new_node3 -> next = (*head_ref);
@@ -499,22 +565,22 @@ void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,
 
 void print_peer_list(struct peer_list ** head_ref){
     struct peer_list * temp = (*head_ref);
-    printf("Lets print the list \n");
+    zlog_debug("Lets print the list ");
     while(temp != NULL){
-        printf("this is the local as of the peer %d \n",temp->peer->as);
+        zlog_debug("this is the local as of the peer %d ",temp->peer->as);
         temp = temp -> next;
     }
-    printf("print peer list ends here \n");
+    zlog_debug("print peer list ends here ");
 
 }
 
 
-void print_neighbours_of_a_prefix(struct neighbours_sent_to ** head_ref)
+void print_neighbours_we_have_sent_event(struct neighbours_sent_to ** head_ref)
 {
     struct neighbours_sent_to * temp = (*head_ref);
-    printf("******* going to print neighbours of a event  ******** \n");
+    zlog_debug("******* going to print neighbours of a event  ******** ");
     while(temp != NULL){
-        printf("this is the event id %s \n", temp -> event_id);
+        zlog_debug("this is the event id %s ", temp -> event_id);
         print_peer_list(&(temp -> peer_list));
         temp = temp -> next;
     }
@@ -522,7 +588,7 @@ void print_neighbours_of_a_prefix(struct neighbours_sent_to ** head_ref)
 
 }
 
-struct neighb * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id){
+struct neighbours_sent_to * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id){
     struct neighbours_sent_to * temp = (*head_ref);
     struct neighbours_sent_to * result = NULL;
     while(temp != NULL){
@@ -569,8 +635,6 @@ void add_peer_to_neighbors_sent_to(struct neighbours_sent_to** head_ref,char *in
         strcpy(new_node -> event_id ,in_event_id);
 
         /* adding peer to a null peer list */
-
-
         /* end */
         struct peer_list* new_node4 = (struct peer_list *)malloc(sizeof(struct peer_list));
         new_node4 -> peer = in_peer;

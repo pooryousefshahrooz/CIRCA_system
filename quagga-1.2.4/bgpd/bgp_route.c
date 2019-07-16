@@ -1641,14 +1641,19 @@ void message_fizzling_check(char  prefix[])
       char * passed_time_stamp[TIME_STAMP_LENGTH];
       char * passed_event_id[EVENT_ID_LENGTH];
       struct peer * send_to_peer;
-      struct  time_stamp_ds;
-      struct time_stamp_ds * our_time_stamp_ds;
+
+
+      
+
+      struct time_stamp_ds* our_time_stamp_ds = (struct time_stamp_ds*) malloc(sizeof(struct time_stamp_ds));
+
      our_time_stamp_ds =delete_prefix_from_update_prefix_list(&time_stamp_ds_head,prefix,&passed_event_id,&passed_time_stamp);
      if(our_time_stamp_ds !=NULL){
          //zlog_debug("1. we found our prefix in time stamp list! %s %s \n",passed_event_id,passed_time_stamp);
          //print_time_stamp(&head);
-      zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle",prefix);
-         //circa_fizzle_send (our_time_stamp_ds->received_from_peer,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
+      zlog_debug("returned event id %s",our_time_stamp_ds->event_id);
+      zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle to %s event %s timestamp %s ",prefix,our_time_stamp_ds->received_from_peer->host,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
+         circa_fizzle_send (our_time_stamp_ds->received_from_peer,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
      }
      else
      {
@@ -2791,7 +2796,7 @@ bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
 
   for (rn = bgp_table_top (table); rn; rn = bgp_route_next(rn))
    {
-    zlog_debug ("for  prefix %s and from :",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+    zlog_debug ("for  prefix %s  and from or to %s:",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
     for (ri = rn->info; ri; ri = ri->next)
       if (CHECK_FLAG (ri->flags, BGP_INFO_SELECTED) && ri->peer != peer)
 	{

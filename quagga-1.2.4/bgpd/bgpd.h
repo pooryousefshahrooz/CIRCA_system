@@ -86,7 +86,7 @@ struct cause{
     char *event_id[EVENT_ID_LENGTH];
     struct peer *received_from_peer;
     char * as_path;
-    char *received_timestamp[EVENT_ID_LENGTH];
+    char *received_timestamp[TIME_STAMP_LENGTH];
     struct cause* next;
 };
 
@@ -98,7 +98,7 @@ struct time_stamp_ds{
     char  *time_stamp[EVENT_ID_LENGTH];
     char *event_id[EVENT_ID_LENGTH];
     struct aspath * ASPATH;
-    struct peer * received_from_peer;
+    struct peer* received_from_peer;
     struct update_prefix_list *upl;
     struct update_prefix_list *saved_prefixes;
     struct time_stamp_ds * next;
@@ -127,6 +127,7 @@ struct sent{
 /* ************************ CIRCA system function defintion starts here */
 extern void print_update_prefix_list(struct update_prefix_list ** head_ref);
 extern void print_time_stamp(struct time_stamp_ds ** head_ref);
+extern struct time_stamp_ds * get_time_stamp(struct time_stamp_ds ** head_ref,int as_number);
 extern void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl,struct peer * received_from_peer );
 extern struct time_stamp_ds * delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,char passed_event_id[],char passed_time_stamp[]);
 extern int  get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,long AS_number,char passed_event_id[],char passed_time_stamp[]);
@@ -140,11 +141,12 @@ extern void set_converged_value_true(struct converged ** head_ref, char * in_eve
 extern int get_converged_value(struct converged ** head_ref, char * in_event_id);
 extern void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer_list * in_peer_list); /* Done */
 extern void print_peer_list(struct peer_list ** head_ref);
-extern void print_neighbours_of_a_prefix(struct neighbours_sent_to ** head_ref);
-extern struct neighb * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
+extern void print_neighbours_we_have_sent_event(struct neighbours_sent_to ** head_ref);
+extern struct neighbours_sent_to * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
 extern void add_to_peer_list(struct peer_list ** head_ref,struct peer * in_peer);
 extern void add_peer_to_neighbors_sent_to(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer * in_peer);
 extern struct peer_list * get_list_of_peers_sent_to(struct neighbours_sent_to** head_ref,char *in_event_id);
+extern void remove_neighbours_event_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
 
 
 /*
