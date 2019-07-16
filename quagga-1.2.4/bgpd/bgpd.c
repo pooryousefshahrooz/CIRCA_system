@@ -242,14 +242,19 @@ void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char 
 
 struct time_stamp_ds * delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,char passed_event_id[],char passed_time_stamp[])
 {
+
+     zlog_debug("we are goint to delete and then check list for  prefix %s",in_prefix);
+
+
     struct time_stamp_ds * ts_temp = (*head_ref);
     while(ts_temp != NULL)
     {
-        printf("this is the event id %s \n", ts_temp -> event_id);
+        //printf("this is the event id %s \n", ts_temp -> event_id);
         struct update_prefix_list * my_temp = ts_temp -> upl ;
 
         // Store head node
         struct update_prefix_list* temp = ts_temp -> upl, *prev;
+        zlog_debug("we are goint to compare passed %s and in prefix %s",temp->prefix,in_prefix);
 
         // If head node itself holds the key to be deleted
         if (temp != NULL && strcmp(temp->prefix, in_prefix)==0)
@@ -257,11 +262,19 @@ struct time_stamp_ds * delete_prefix_from_update_prefix_list(struct time_stamp_d
             ts_temp -> upl = temp->next;   // Changed head
             free(temp);               // free old head
             if (ts_temp -> upl==NULL)
+            {
+                zlog_debug("it seems the prefix list is empty lets return the time stamp");
                 return ts_temp;
+            }
             else
+            {
+                zlog_debug("it seems the prefix list is not empty lets return NULL");
                 return NULL;
+            }
 
         }
+
+        zlog_debug("we are in the next steps in deleting process");
 
         // Search for the key to be deleted, keep track of the
         // previous node as we need to change 'prev->next'

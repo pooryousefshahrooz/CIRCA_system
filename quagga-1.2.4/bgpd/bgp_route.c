@@ -1633,9 +1633,9 @@ bgp_process_rsclient (struct work_queue *wq, void *data)
   return WQ_SUCCESS;
 }
 
-void message_fizzling_check(char * prefix)
+void message_fizzling_check(char  prefix[])
 {
-
+   zlog_debug("we are at message_fizzling_check for prefix %s",prefix);
   if (working_mode ==1)
   {
       char * passed_time_stamp[TIME_STAMP_LENGTH];
@@ -1647,12 +1647,12 @@ void message_fizzling_check(char * prefix)
      if(our_time_stamp_ds !=NULL){
          //zlog_debug("1. we found our prefix in time stamp list! %s %s \n",passed_event_id,passed_time_stamp);
          //print_time_stamp(&head);
-      zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle");
+      zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle",prefix);
          //circa_fizzle_send (our_time_stamp_ds->received_from_peer,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
      }
      else
      {
-      zlog_debug("________________the update packet which prefix %s is belong to it has not fizzled ");
+      zlog_debug("________________the update packet which prefix %s is belong to it has not fizzled ",prefix);
      }
      // if (ret==1){
      //     zlog_debug("1. we found our prefix in time stamp list! %s %s \n",passed_event_id,passed_time_stamp);
@@ -1707,11 +1707,11 @@ bgp_process_main (struct work_queue *wq, void *data)
           
 	  UNSET_FLAG (old_select->flags, BGP_INFO_MULTIPATH_CHG);
           UNSET_FLAG (rn->flags, BGP_NODE_PROCESS_SCHEDULED);
-          if (fizzling_value==0)
-          {
-          //zlog_debug ("1 ************************************* we checked prefix %s for all neighbors and this has fizzled!!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
-          message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
-        }
+        //   if (fizzling_value==0)
+        //   {
+        //   //zlog_debug ("1 ************************************* we checked prefix %s for all neighbors and this has fizzled!!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+        //   message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+        // }
           return WQ_SUCCESS;
         }
     }
@@ -1762,7 +1762,7 @@ bgp_process_main (struct work_queue *wq, void *data)
 
   if (fizzling_value==0)
   {
-  //zlog_debug ("2************************************* we checked prefix %s for all neighbors and this has fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+  zlog_debug ("2************************************* we checked prefix %s for all neighbors and this has fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
   message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
 }
   return WQ_SUCCESS;
