@@ -71,17 +71,30 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include <string.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <stdio.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 #ifdef HAVE_SNMP
 #include "bgpd/bgp_snmp.h"
 #endif /* HAVE_SNMP */
 
-struct peer *avatar;
-int working_mode;
-long sequence_number=1000;
+#define EVENT_ID_LENGTH  20
+#define PREFIX_LENGTH  20
+#define TIME_STAMP_LENGTH 20
+#define GRC_MSG_TIME_STAMP "GRC"
 
+struct time_stamp_ds* time_stamp_ds_head = NULL;
+struct update_prefix_list* prefix_list_head = NULL;
+struct sent* sent_head = NULL;
+struct cause* cause_head = NULL;
+struct  converged* converged_head = NULL;
+struct neighbours_sent_to* neighbours_sent_to_head = NULL;
+char * event_id_sent_by_ground[EVENT_ID_LENGTH];
+char * time_stamp_set_by_GRC_MSG[TIME_STAMP_LENGTH];
 struct peer *a_peer_for_maintating_head_of_data_structure;
-
 /*
 We define our function definition for CIRCA system here
 */
@@ -90,58 +103,136 @@ We define our function definition for CIRCA system here
 ************************ CIRCA system function implementation starts here
 */
 
+long  str_split(char* a_str, const char a_delim,int asked_section)
+{
+    char** result    = 0;
+    size_t count     = 0;
+    char* tmp        = a_str;
+    char* last_comma = 0;
+    char delim[2];
+    delim[0] = a_delim;
+    delim[1] = 0;
 
-/*
- * We will add a new prefix to the list
- */
-void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct aspath ASPATH)
+    /* Count how many elements will be extracted. */
+    while (*tmp)
+    {
+        if (a_delim == *tmp)
+        {
+            count++;
+            last_comma = tmp;
+        }
+        tmp++;
+    }
+
+    /* Add space for trailing token. */
+    count += last_comma < (a_str + strlen(a_str) - 1);
+
+    /* Add space for terminating null string so caller
+       knows where the list of returned strings ends. */
+    count++;
+
+    result = malloc(sizeof(char*) * count);
+
+    if (result)
+    {
+        size_t idx  = 0;
+        char* token = strtok(a_str, delim);
+
+        while (token)
+        {
+            assert(idx < count);
+            *(result + idx++) = strdup(token);
+            token = strtok(0, delim);
+        }
+        assert(idx == count - 1);
+        *(result + idx) = 0;
+    }
+
+
+    if (result)
+    {
+        int i;
+        for (i = 0; *(result + i); i++)
+
+        {   
+
+          if (i==asked_section)
+            {
+                //char str[30] = *(tokens + i);
+                char *ptr;
+                long ret;
+                ret = strtol(*(result + i), &ptr, 10);
+                return ret;
+
+            }
+            
+            free(*(result + i));
+        }
+        
+        free(result);
+    }
+
+
+    //return result;
+}
+
+/* We generate a uniqe time stamp using microsecond value of current time attached by router id */
+void generate_time_stamp(char passed_time_stamp[],char * router_id)
+{
+    struct timeval start;
+    char * char_my_router_id[TIME_STAMP_LENGTH];
+    long mtime, seconds, to_be_sent_time_stamp;
+    gettimeofday(&start, NULL);
+    to_be_sent_time_stamp = start.tv_usec;
+    zlog_debug("\n time in microseconds .... %ld \n",to_be_sent_time_stamp);
+    sprintf(passed_time_stamp, "%u", to_be_sent_time_stamp);
+    strcat(passed_time_stamp, ",");
+    strcat(passed_time_stamp, router_id);
+}
+
+void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix)
 {
     struct update_prefix_list * new_node = (struct update_prefix_list*) malloc(sizeof(struct update_prefix_list));
-    strncpy(new_node -> prefix ,prefix, PREFIX_LENGTH);
+    strncpy(new_node -> prefix ,prefix, 20);
     new_node->next = (*head_ref);
     (*head_ref) = new_node;
 }
 
-
-/* we will preint the list of prefixes we have received in a update packet */
 void print_update_prefix_list(struct update_prefix_list ** head_ref)
 {
     struct update_prefix_list * temp = (*head_ref);
-    zlog_debug("*********** going to print prefix list ********** ");
     while(temp != NULL)
     {
-        zlog_debug("this is the prefix %s", temp -> prefix);
+        zlog_debug ("+++++++++++++++++++++++++++++++++ This is the prefix (%s) to ++++++++++++++++++++",temp -> prefix);
         temp = temp -> next;
     }
-    zlog_debug("print prefix list ends here ");
 }
 
-
-/* we will preint the list of prefixes for each event id and time stamp we have received */
 void print_time_stamp(struct time_stamp_ds ** head_ref)
 {
     struct time_stamp_ds * temp = (*head_ref);
     while(temp != NULL)
     {
-        //printf("this is the event id %s \n", temp -> event_id);
+        zlog_debug("this is the event id %s \n", temp -> event_id);
         struct update_prefix_list * my_temp = temp -> upl ;
-        //printf("********** going to print the prefix list ******** \n");
+        zlog_debug("********** going to print the prefix list ******** \n");
         while(my_temp != NULL)
         {
-            //printf("this is the prefix  %s \n", my_temp -> prefix);
+            zlog_debug("this is the prefix  %s \n", my_temp -> prefix);
             my_temp = my_temp -> next;
         }
         temp = temp -> next;
     }
 }
 
-/* We add a new time stamp and all of the prefixes received int he update belong to that time stamp */
-void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl)
+
+void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl,struct peer * received_from_peer)
 
 {
     struct time_stamp_ds * new_node = (struct time_stamp_ds*) malloc(sizeof(struct time_stamp_ds));
-    strncpy(new_node -> event_id ,in_event_id, EVENT_ID_LENGTH);
-    strncpy(new_node -> time_stamp ,in_time_stamp_id, TIME_STAMP_LENGTH);
+    strncpy(new_node -> event_id ,in_event_id, 20);
+    strncpy(new_node -> time_stamp ,in_time_stamp_id, 20);
+    new_node->received_from_peer = received_from_peer;
     new_node->upl = pl;
     new_node->saved_prefixes = pl;
     new_node->next = (*head_ref);
@@ -149,136 +240,175 @@ void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char 
 
 }
 
-/* We delete a prefix from the list of the prefixes  */
-char *  delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,struct aspath * ASPATH,char passed_event_id[],char passed_time_stamp[])
+struct time_stamp_ds * delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,char passed_event_id[],char passed_time_stamp[])
+{
+    struct time_stamp_ds * ts_temp = (*head_ref);
+    while(ts_temp != NULL)
+    {
+        printf("this is the event id %s \n", ts_temp -> event_id);
+        struct update_prefix_list * my_temp = ts_temp -> upl ;
+
+        // Store head node
+        struct update_prefix_list* temp = ts_temp -> upl, *prev;
+
+        // If head node itself holds the key to be deleted
+        if (temp != NULL && strcmp(temp->prefix, in_prefix)==0)
+        {
+            ts_temp -> upl = temp->next;   // Changed head
+            free(temp);               // free old head
+            if (ts_temp -> upl==NULL)
+                return ts_temp;
+            else
+                return NULL;
+
+        }
+
+        // Search for the key to be deleted, keep track of the
+        // previous node as we need to change 'prev->next'
+        while (temp != NULL && strcmp(temp->prefix, in_prefix)!=0)
+        {
+            prev = temp;
+            temp = temp->next;
+        }
+
+        // If key was not present in linked list
+        if (temp == NULL) return NULL;
+
+        // Unlink the node from linked list
+        prev->next = temp->next;
+
+        free(temp);  // Free memory
+        if(prev->next ==NULL)
+            return NULL;
+        else
+            return ts_temp;
+        ts_temp = ts_temp -> next;
+
+    }
+    return NULL;
+
+}
+
+
+
+int get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,long AS_number,char passed_event_id[],char passed_time_stamp[])
 {
     struct time_stamp_ds * temp = (*head_ref);
     while(temp != NULL)
     {
-        printf("this is the event id %s \n", temp -> event_id);
         struct update_prefix_list * my_temp = temp -> upl ;
-        printf("********** going to check the prefix list ******** \n");
         while(my_temp != NULL)
+        {
+            if(strcmp (my_temp -> prefix,in_prefix)==0)
             {
-                printf("this is the prefix  %s %s \n", my_temp -> prefix,in_prefix);
-                if(strcmp (my_temp -> prefix,in_prefix)==0)
-                    {
-                        temp -> upl = my_temp->next;   // Changed head
-                        free(my_temp);
-                        strncpy(passed_event_id ,temp->event_id, 20);
-                        strncpy(passed_time_stamp ,temp->time_stamp, 20);
-                        if (temp -> upl -> prefix == NULL)
-                        {
-                            printf("this is empty........  \n");
-                            char *char_test[20];
-//                            strncpy(char_test ,'1', 20);
-//                            strncpy(passed_empty_variable ,char_test, 20);
-                            return 2;
-                        }
-                        else {
-                            int i=2;
-//                            char * char_test2[20];
-//                            strncpy(char_test2 ,'0', 20);
-//                            strncpy(passed_empty_variable ,char_test2, 20);
-                            return 1;
-                        }
-
-                        printf("this is the new node in prefix list  %s \n", temp -> upl -> prefix);
-                        return 1;
-                    }
-                my_temp = my_temp -> next;
+                strncpy(passed_event_id ,temp->event_id, EVENT_ID_LENGTH);
+                strncpy(passed_time_stamp ,temp->time_stamp, TIME_STAMP_LENGTH);
+                return 1;
             }
+            my_temp = my_temp -> next;
+        }
         temp = temp -> next;
     }
+    /* it seems we are sending an update message, but we have not received this prefix from any other ASes */
     return -1;
 
 }
 
 
+void add_to_sent(struct sent** head_ref, char * in_time_stamp, char * event_id,struct peer* in_neighbour) /* Done */
 
-void add_to_sent(struct sent** head_ref, char *in_time_stamp, char * in_event_id,struct peer* in_neighbour){
-    struct sent * new_node6 = (struct sent*) malloc(sizeof(struct sent));
-    //zlog_debug("the passed time stamp to add_to_sent function is %s", in_time_stamp);
-    strncpy(new_node6 ->time_stamp ,in_time_stamp, 50);
-    //new_node6 -> timestamp = in_time_stamp;
-    //zlog_debug("the saved time stamp in add_to_sent function is %s", new_node6 -> timestamp);
-
-    new_node6 -> sent_to_peer = in_neighbour;
-    strncpy(new_node6 -> event_id, in_event_id, 50);
-    new_node6->next = (*head_ref); 
-  
+{
+    struct sent * new_node = (struct sent*) malloc(sizeof(struct sent));
+    strncpy(new_node ->time_stamp ,in_time_stamp, 20);
+    new_node -> sent_to_peer = in_neighbour;
+    strncpy(new_node -> event_id, event_id, 20);
+    new_node->next = (*head_ref);
     /* 4. move the head to point to the new node */
-    (*head_ref) = new_node6; 
-
+    (*head_ref) = new_node;
 }
-bool check_if_sent_is_empty(struct sent** head_ref,char *  event_id){
+
+bool check_if_sent_is_empty(struct sent** head_ref,char *event_id) /* allmost Done! */
+{
     struct sent * temp = (*head_ref);
     struct sent * prev = (struct sent *) malloc(sizeof(struct sent));
     if(temp!=NULL)
     {
-    while(temp != NULL && temp -> event_id != event_id)
-    {
-        prev = temp;
-        temp = temp -> next;
-    }
-    if(temp == NULL){
-        zlog_debug("sent is empty");
-        return true;
+        while(temp != NULL && strcmp(temp -> event_id , event_id)!=0)
+        {
+            prev = temp;
+            temp = temp -> next;
+        }
+        if(temp == NULL){
+            //zlog_debug("sent is empty");
+            return true;
+        }
+        if (strcmp(temp -> event_id , event_id)==0)
+        {
+            return false;
+        }
     }
     else
     {
-      zlog_debug("sent is not empty");
-      return false;
+        //zlog_debug("sent is empty");
+        return true;
     }
-  }
-  else
-  {
-    zlog_debug("sent is empty");
-    return true;
-  }
 }
 
-
-/*
- * We will clear the update_prefix_list data structure
- */
-void make_update_prefix_list_empty(struct update_prefix_list ** head_ref)
+void delete_from_sent(struct sent** head_ref,char *received_time_stamp,char *in_event_id)
 {
-    
-    (*head_ref) = NULL;
+    struct sent * temp = (*head_ref);
+    struct sent * prev = (struct sent *) malloc(sizeof(struct sent));//temp -> neighbour -> local_id.s_addr == in_neighbour -> local_id.s_addr
+    while(temp != NULL )
+    {
+        if ((strcmp(temp-> event_id ,in_event_id)==0) && (strcmp(temp-> time_stamp ,received_time_stamp)==0))//&& (strcmp(temp -> timestamp ,in_time_stamp)==0)
+        {
+            *head_ref = temp->next;   // Changed head
+            free(temp);               // free old head
+            return;
+        }
+        else
+        {
+            //zlog_debug("not equal, lets move!");
+            prev = temp;
+            temp = temp -> next;
+        }
+    }
+
+    //zlog_debug("Could not delete event from sent b/c entry does not exist or the list is empty");
+
 
 }
 
-
-
-void add_to_peer_list(struct peer_list ** head_ref,struct peer * in_peer){
-    struct peer_list* new_node4 = (struct peer_list *)malloc(sizeof(struct peer_list));
-    new_node4 -> peer = in_peer;
-    new_node4 -> next = (*head_ref);
-    (*head_ref) = new_node4;
-}
-
-void print_peer_list(struct peer_list ** head_ref){
-    struct peer_list * temp = (*head_ref);
+struct cause * getcause(struct cause** head_ref,char * received_time_stamp,char *in_event_id)/* Done */
+{
+    struct cause* temp = (*head_ref);
+    struct cause* result = NULL;
     while(temp != NULL){
-        //zlog_debug("going to print node %d of the peer list", count);
-        zlog_debug("this is the local as of the peer %ld", temp -> peer -> as);
-        temp = temp -> next;
-    }
-    zlog_debug(" print peer list ends here");
-}
-/*
- * We will add the list of peers to the data structure we have for saving peers we have sent the update message for event_id to them
- */
-void add_to_neighbours_of_an_event(struct neighbours_sent_to** head_ref,char *event_id,struct peer_list* in_peer_list)
-{
-    struct neighbours_sent_to * new_node3 = (struct neighbours_sent_to *) malloc(sizeof(struct neighbours_sent_to));
-    strncpy(new_node3 -> event_id, event_id, 50);
-    //new_node3 -> key_prefix= in_prefix;
-    new_node3 -> peer_list = in_peer_list;
+        if((strcmp(temp -> sending_timestamp ,received_time_stamp)==0)&& (strcmp(temp -> event_id ,in_event_id)==0)){
+            result = temp;
+            break;
+        }else{
+           // zlog_debug("not equal lets move");
+            temp = temp-> next;
+        }
 
-    new_node3 -> next = (*head_ref);
-    (*head_ref) = new_node3;
+    }
+    return result;
+}
+void addcause(struct cause** head_ref,char *be_sending_time_stamp,char *causality,char *in_event_id,struct peer * peer) /* Done */
+
+{
+    struct cause* new_node = (struct cause *) malloc(sizeof(struct cause));
+    strncpy(new_node -> sending_timestamp, be_sending_time_stamp, 20);
+    printf("passed be_sending_time_stamp  %s!\n",be_sending_time_stamp);
+    printf("passed in_event_id  %s!\n",in_event_id);
+    printf("passed causality  %s!\n",causality);
+    strncpy(new_node -> event_id, in_event_id, 20);
+    strncpy(new_node -> received_timestamp, causality, 20);
+    new_node -> received_from_peer = peer;
+    new_node->next = (*head_ref);
+    (*head_ref) = new_node;
+
 }
 
 
@@ -286,7 +416,7 @@ void insert_in_converged(struct converged ** head_ref, char * in_event_id){
     struct converged* temp = (*head_ref);
 
     while(temp != NULL){
-        if(temp -> event_id == in_event_id){
+        if(strcmp(temp -> event_id , in_event_id)==0){
             printf("\nthe event_id already exists \n");
             return;
         }else{
@@ -294,20 +424,20 @@ void insert_in_converged(struct converged ** head_ref, char * in_event_id){
         }
     }
     struct converged * new_node = (struct converged *) malloc(sizeof(struct converged));
-    new_node -> event_id = in_event_id;
-    new_node -> converged_yet = false;
+    strcpy(new_node->event_id,in_event_id);
+    new_node -> converged_value = false;
 
     new_node->next = (*head_ref);
     (*head_ref) = new_node;
 }
 
 
-void set_converged_yet_true(struct converged ** head_ref, char * in_event_id){
+void set_converged_value_true(struct converged ** head_ref, char * in_event_id){
     int found = 0;
     struct converged * temp = (*head_ref);
     while(temp != NULL){
-        if(temp -> event_id == in_event_id){
-            temp -> converged_yet = true;
+        if(strcmp(temp -> event_id , in_event_id)==0){
+            temp -> converged_value = true;
             found = 1;
             break;
         }else{
@@ -315,21 +445,21 @@ void set_converged_yet_true(struct converged ** head_ref, char * in_event_id){
         }
     }
     if(found == 1){
-        printf(" Successfully set the converged value to true of the event with event_id %ld \n", temp -> event_id );
+        printf(" Successfully set the converged value to true of the event with event_id %s \n", temp -> event_id );
     }else{
-        printf("the event with event_id %ld does not exixt\n", in_event_id );
+        printf("the event with event_id %s does not exixt\n", in_event_id );
     }
 }
 
 
-int get_converged_yet_value(struct converged ** head_ref, char * in_event_id){
+int get_converged_value(struct converged ** head_ref, char * in_event_id){
     struct converged * temp = (*head_ref);
     while(temp != NULL){
-        if(temp -> event_id == in_event_id){
+        if(strcmp(temp -> event_id , in_event_id)==0){
 
-            if(temp -> converged_yet == true){
+            if(temp -> converged_value == true){
                 return 1;
-            }else if(temp -> converged_yet == false){
+            }else if(temp -> converged_value == false){
                 return 0;
             }
 
@@ -342,51 +472,120 @@ int get_converged_yet_value(struct converged ** head_ref, char * in_event_id){
 
 
 
-/*
- * we will add to the linked list of cause
- */
-void addcause(struct cause** head_ref,char *time_stamp,char *causality,char *event_id,struct peer * in_peer){
-    struct cause* new_node7 = (struct cause *) malloc(sizeof(struct cause));
-    strncpy(new_node7 -> sent_timestamp, time_stamp, 50);
-    strncpy(new_node7 -> event_id, event_id, 50);
-    strncpy(new_node7 -> received_timestamp, causality, 50);
-    new_node7 -> received_from_peer = in_peer;
-    new_node7->next = (*head_ref);
-    (*head_ref) = new_node7;
+void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer_list * in_peer_list) /* Done */
+{
+    struct neighbours_sent_to * new_node3 = (struct neighbours_sent_to *) malloc(sizeof(struct neighbours_sent_to));
+    strncpy(new_node3 -> event_id, in_event_id, 20);
+    //new_node3 -> key_prefix= in_prefix;
+    new_node3 -> peer_list = in_peer_list;
+    new_node3 -> next = (*head_ref);
+    (*head_ref) = new_node3;
+
+
 }
 
-/*
- * we will get the cause of the time_stamp. we will search in the linked list of cause and check timestamp
- */
-struct cause * getcause(struct cause** head_ref,char * time_stamp_id,char *event_id){
-    struct cause* temp = (*head_ref);
-    struct cause* result = NULL;
+void print_peer_list(struct peer_list ** head_ref){
+    struct peer_list * temp = (*head_ref);
+    printf("Lets print the list \n");
     while(temp != NULL){
-       zlog_debug("we are goign to compare %s and %s ",temp -> sent_timestamp,time_stamp_id);
-        if(strcmp(temp -> sent_timestamp ,time_stamp_id)==0){
+        printf("this is the local as of the peer %d \n",temp->peer->as);
+        temp = temp -> next;
+    }
+    printf("print peer list ends here \n");
+
+}
+
+
+void print_neighbours_of_a_prefix(struct neighbours_sent_to ** head_ref)
+{
+    struct neighbours_sent_to * temp = (*head_ref);
+    printf("******* going to print neighbours of a event  ******** \n");
+    while(temp != NULL){
+        printf("this is the event id %s \n", temp -> event_id);
+        print_peer_list(&(temp -> peer_list));
+        temp = temp -> next;
+    }
+    //zlog_debug("print neighbours of a prefix ends here ");
+
+}
+
+struct neighb * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id){
+    struct neighbours_sent_to * temp = (*head_ref);
+    struct neighbours_sent_to * result = NULL;
+    while(temp != NULL){
+        // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
+        if(strcmp (temp -> event_id,in_event_id)==0){
             result = temp;
             break;
         }else{
-          zlog_debug("not equal lets move");
-            temp = temp-> next;
+            temp = temp -> next;
         }
-
     }
     return result;
 }
 
-void print_cause(struct cause** head_ref){
-    struct cause * temp = (*head_ref);
-    zlog_debug(" ****** Going to print cause list ******");
-    int count = 0;
-    while(temp != NULL){
-        zlog_debug("this is the new_timestamp: %s", temp-> sent_timestamp);
-        zlog_debug("this is the event_id %ld", temp -> event_id);
-        zlog_debug("this is the received_timestamp: %s ", temp -> received_timestamp );
-        temp = temp -> next;
+
+
+void add_to_peer_list(struct peer_list ** head_ref,struct peer * in_peer){
+    struct peer_list* new_node4 = (struct peer_list *)malloc(sizeof(struct peer_list));
+    new_node4 -> peer = in_peer;
+    new_node4 -> next = (*head_ref);
+    (*head_ref) = new_node4;
+}
+
+
+void add_peer_to_neighbors_sent_to(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer * in_peer)
+{
+    struct neighbours_sent_to * temp = (*head_ref);
+
+    while(temp != NULL)
+    {
+        if(strcmp(temp->event_id,in_event_id)==0) {
+            struct peer_list* new_node4 = (struct peer_list *)malloc(sizeof(struct peer_list));
+            new_node4 -> peer = in_peer;
+            new_node4 -> next = (*&(temp->peer_list));
+            (*&(temp->peer_list)) = new_node4;
+            return;
+            }
+
+        temp = temp->next;
     }
-    zlog_debug("print cause list ends here");
-    return;
+    if(temp ==NULL)
+    {
+        struct neighbours_sent_to * new_node = (struct neighbours_sent_to *) malloc(sizeof(struct neighbours_sent_to));
+        strcpy(new_node -> event_id ,in_event_id);
+
+        /* adding peer to a null peer list */
+
+
+        /* end */
+        struct peer_list* new_node4 = (struct peer_list *)malloc(sizeof(struct peer_list));
+        new_node4 -> peer = in_peer;
+        new_node4 -> next = (*&(new_node->peer_list));
+        new_node->peer_list = new_node4;
+
+        new_node -> next = (*head_ref);
+        (*head_ref) = new_node;
+
+    }
+}
+
+
+struct peer_list * get_list_of_peers_sent_to(struct neighbours_sent_to** head_ref,char *in_event_id)
+{
+    struct neighbours_sent_to * temp = (*head_ref);
+    struct neighbours_sent_to * result = NULL;
+    while(temp != NULL){
+        // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
+        if(strcmp (temp -> event_id,in_event_id)==0){
+            result = temp;
+            break;
+        }else{
+            temp = temp -> next;
+        }
+    }
+    return result;
+
 }
 
 
@@ -5893,6 +6092,15 @@ bgp_master_init (void)
 void
 bgp_init (void)
 {
+  /* allocate CIRCA data structures head default value */
+  /* Start with the empty list */
+  // struct time_stamp_ds* time_stamp_ds_head = NULL;
+  // struct update_prefix_list* prefix_list_head = NULL;
+  // struct sent* sent_head = NULL;
+  // struct cause* cause_head = NULL;
+  // struct  converged* converged_head = NULL;
+  // struct neighbours_sent_to* neighbours_sent_to_head = NULL;
+strncpy(event_id_sent_by_ground,"NULL",EVENT_ID_LENGTH);
 
   /* allocates some vital data structures used by peer commands in vty_init */
   bgp_scan_init ();

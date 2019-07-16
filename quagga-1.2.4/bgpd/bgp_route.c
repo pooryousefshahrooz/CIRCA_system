@@ -59,16 +59,28 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_mpath.h"
 #include "bgpd/bgp_nht.h"
 
+#include <string.h>
+#include <stdbool.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <unistd.h>
 /* Extern from bgp_dump.c */
 extern const char *bgp_origin_str[];
 extern const char *bgp_origin_long_str[];
-
+extern prefix_list_head;
+extern struct peer *a_peer_for_maintating_head_of_data_structure;
+extern time_stamp_ds_head;
+extern converged_head;
 /* we import CIRCA global variables */
-extern long sequence_number;
 extern struct peer *avatar;
 extern int working_mode;
 extern struct peer *a_peer_for_maintating_head_of_data_structure;
-struct update_prefix_list* update_prefix_list_head = NULL; 
+extern int prefix_list_head;
+#define EVENT_ID_LENGTH  20
+#define PREFIX_LENGTH  20
+#define TIME_STAMP_LENGTH 20
+#define GRC_MSG_TIME_STAMP "GRC"
+
 
 static struct bgp_node *
 bgp_afi_node_get (struct bgp_table *table, afi_t afi, safi_t safi, struct prefix *p,
@@ -1468,11 +1480,11 @@ bgp_best_selection (struct bgp *bgp, struct bgp_node *rn,
 
 static int
 bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
-                               struct bgp_node *rn, afi_t afi, safi_t safi)
+                               struct bgp_node *rn, afi_t afi, safi_t safi,int fizzling_value)
 {
 
 
-  zlog_debug ("start. bgp_process_announce_selected:");
+  //zlog_debug ("start. bgp_process_announce_selected:");
   struct prefix *p;
   struct attr attr;
   struct attr_extra extra;
@@ -1482,6 +1494,9 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
 
   p = &rn->p;
 
+  //zlog_debug ("for prefix %s and peer %s :",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+
+  
   /* Announce route to Established peer. */
   if (peer->status != Established)
     return 0;
@@ -1505,13 +1520,19 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
          withdraw it. */
         if (selected && bgp_announce_check (selected, peer, p, &attr, afi, safi))
         {
-          zlog_debug ("1. bgp_process_announce_selected: we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
-          //zlog_debug ("+++++++++++time stamp for this prefix %s  is %ld",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),attr.time_stamp_id);
-
-          bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
+          if (avatar)
+            if(strcmp(avatar->host,peer->host)!=0)
+            {
+              zlog_debug ("1. bgp_process_announce_selected: we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+              fizzling_value = 1;
+              bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
+        }
+          //print_time_stamp(&time_stamp_ds_head);
         }
         else
+        {
           bgp_adj_out_unset (rn, peer, p, afi, safi);
+        }
         break;
       case BGP_TABLE_RSCLIENT:
         /* Announcement to peer->conf.  If the route is filtered, 
@@ -1519,14 +1540,14 @@ bgp_process_announce_selected (struct peer *peer, struct bgp_info *selected,
         if (selected && 
             bgp_announce_check_rsclient (selected, peer, p, &attr, afi, safi))
         {
-          zlog_debug ("2. bgp_process_announce_selected : we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+          zlog_debug ("22. bgp_process_announce_selected : we will send prefix %s to %s",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
           bgp_adj_out_set (rn, peer, p, &attr, afi, safi, selected);
         }
         else
 	  bgp_adj_out_unset (rn, peer, p, afi, safi);
         break;
     }
-  zlog_debug ("end. bgp_process_announce_selected:");
+  //zlog_debug ("end. bgp_process_announce_selected:");
 
   bgp_attr_flush (&attr);
   return 0;
@@ -1552,8 +1573,18 @@ bgp_process_rsclient (struct work_queue *wq, void *data)
   struct bgp_info *old_select;
   struct bgp_info_pair old_and_new;
   struct listnode *node, *nnode;
+  /* CIRCA: we will pick a prefix and check it for all neighbors */
+  struct prefix *p;
+  char buf[SU_ADDRSTRLEN];
+  p = &rn->p;
+
+  zlog_debug ("lets check prefix %s for all neighbors :",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
+
+  int fizzling_value = 0;
+
   struct peer *rsclient = bgp_node_table (rn)->owner;
-  
+
+
   /* Best path selection. */
   bgp_best_selection (bgp, rn, &old_and_new, afi, safi);
   new_select = old_and_new.new;
@@ -1577,9 +1608,9 @@ bgp_process_rsclient (struct work_queue *wq, void *data)
                 bgp_info_unset_flag (rn, new_select, BGP_INFO_ATTR_CHANGED);
 		UNSET_FLAG (new_select->flags, BGP_INFO_MULTIPATH_CHG);
              }
-
+            /* for prefix &rn.p and peer rsclient we will check the routing table */
             bgp_process_announce_selected (rsclient, new_select, rn,
-                                           afi, safi);
+                                           afi, safi,&fizzling_value);
           }
     }
   else
@@ -1592,7 +1623,7 @@ bgp_process_rsclient (struct work_queue *wq, void *data)
 	  bgp_info_unset_flag (rn, new_select, BGP_INFO_ATTR_CHANGED);
 	  UNSET_FLAG (new_select->flags, BGP_INFO_MULTIPATH_CHG);
 	}
-      bgp_process_announce_selected (rsclient, new_select, rn, afi, safi);
+      bgp_process_announce_selected (rsclient, new_select, rn, afi, safi,&fizzling_value);
     }
 
   if (old_select && CHECK_FLAG (old_select->flags, BGP_INFO_REMOVED))
@@ -1602,6 +1633,39 @@ bgp_process_rsclient (struct work_queue *wq, void *data)
   return WQ_SUCCESS;
 }
 
+void message_fizzling_check(char * prefix)
+{
+
+  if (working_mode ==1)
+  {
+      char * passed_time_stamp[TIME_STAMP_LENGTH];
+      char * passed_event_id[EVENT_ID_LENGTH];
+      struct peer * send_to_peer;
+      struct  time_stamp_ds;
+      struct time_stamp_ds * our_time_stamp_ds;
+     our_time_stamp_ds =delete_prefix_from_update_prefix_list(&time_stamp_ds_head,prefix,&passed_event_id,&passed_time_stamp);
+     if(our_time_stamp_ds !=NULL){
+         //zlog_debug("1. we found our prefix in time stamp list! %s %s \n",passed_event_id,passed_time_stamp);
+         //print_time_stamp(&head);
+      zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle");
+         //circa_fizzle_send (our_time_stamp_ds->received_from_peer,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
+     }
+     else
+     {
+      zlog_debug("________________the update packet which prefix %s is belong to it has not fizzled ");
+     }
+     // if (ret==1){
+     //     zlog_debug("1. we found our prefix in time stamp list! %s %s \n",passed_event_id,passed_time_stamp);
+     //     //print_time_stamp(&head);
+     //     zlog_debug("1.prefix list is not empty");
+     // }
+     // if (ret<0){
+     //     zlog_debug("1.we did not find our prefix in time stamp list %s %s \n",passed_event_id,passed_time_stamp);
+     // }
+       
+     
+    }
+}
 static wq_item_status
 bgp_process_main (struct work_queue *wq, void *data)
 {
@@ -1616,7 +1680,16 @@ bgp_process_main (struct work_queue *wq, void *data)
   struct bgp_info_pair old_and_new;
   struct listnode *node, *nnode;
   struct peer *peer;
-  
+  /* CIRCA: we will pick a prefix and check it for all neighbors */
+  struct prefix *p2;
+  char buf[SU_ADDRSTRLEN];
+  p2 = &rn->p;
+
+  zlog_debug ("************************************* lets check prefix %s for all neighbors :",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+
+
+  int fizzling_value = 0;
+
   /* Best path selection. */
   bgp_best_selection (bgp, rn, &old_and_new, afi, safi);
   old_select = old_and_new.old;
@@ -1634,6 +1707,11 @@ bgp_process_main (struct work_queue *wq, void *data)
           
 	  UNSET_FLAG (old_select->flags, BGP_INFO_MULTIPATH_CHG);
           UNSET_FLAG (rn->flags, BGP_NODE_PROCESS_SCHEDULED);
+          if (fizzling_value==0)
+          {
+          //zlog_debug ("1 ************************************* we checked prefix %s for all neighbors and this has fizzled!!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+          message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+        }
           return WQ_SUCCESS;
         }
     }
@@ -1654,7 +1732,8 @@ bgp_process_main (struct work_queue *wq, void *data)
   /* Check each BGP peer. */
   for (ALL_LIST_ELEMENTS (bgp->peer, node, nnode, peer))
     {
-      bgp_process_announce_selected (peer, new_select, rn, afi, safi);
+      //zlog_debug ("*************    we will check peer %s ************",peer->host);
+      bgp_process_announce_selected (peer, new_select, rn, afi, safi,&fizzling_value);
     }
 
   /* FIB update. */
@@ -1680,6 +1759,12 @@ bgp_process_main (struct work_queue *wq, void *data)
     bgp_info_reap (rn, old_select);
   
   UNSET_FLAG (rn->flags, BGP_NODE_PROCESS_SCHEDULED);
+
+  if (fizzling_value==0)
+  {
+  //zlog_debug ("2************************************* we checked prefix %s for all neighbors and this has fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+  message_fizzling_check(inet_ntop(p2->family, &p2->u.prefix, buf, SU_ADDRSTRLEN));
+}
   return WQ_SUCCESS;
 }
 
@@ -2261,7 +2346,7 @@ zlog_debug ("*************************start of bgp_update_main function for peer
 	      && CHECK_FLAG (ri->flags, BGP_INFO_HISTORY))
 	    {
 	      if (BGP_DEBUG (update, UPDATE_IN))  
-		  zlog (peer->log, LOG_DEBUG, "%s rcvd %s/%d",
+		  zlog (peer->log, LOG_DEBUG, "%s rcvd  prefix (1)%s/%d",
 		  peer->host,
 		  inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),
 		  p->prefixlen);
@@ -2309,7 +2394,7 @@ zlog_debug ("*************************start of bgp_update_main function for peer
 
       /* Received Logging. */
       if (BGP_DEBUG (update, UPDATE_IN))  
-	zlog (peer->log, LOG_DEBUG, "%s rcvd %s/%d",
+	zlog (peer->log, LOG_DEBUG, "%s rcvd prefix(2) %s/%d",
 	      peer->host,
 	      inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),
 	      p->prefixlen);
@@ -2397,16 +2482,16 @@ zlog_debug ("*************************start of bgp_update_main function for peer
   /* Received Logging. */
   if (BGP_DEBUG (update, UPDATE_IN))  
     {
-      zlog (peer->log, LOG_DEBUG, "%s rcvd %s/%d",
+      zlog (peer->log, LOG_DEBUG, "%s rcvd prefix (3) %s/%d",
 	    peer->host,
 	    inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),
 	    p->prefixlen);
     }
-
-
-// add_prefix_to_prefix_list(&update_prefix_list_head,inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
-// print_update_prefix_list(&update_prefix_list_head);
-
+  /* add the prefix to the time stamp data structure */
+  zlog_debug ("+++++++++++++++++++++++++++++++++  we are going to add (%s) to prefix list ++++++++++++++++++++",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
+  add_prefix_to_prefix_list(&prefix_list_head,inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
+  print_update_prefix_list(&prefix_list_head);
+  zlog_debug ("+++++++++++++++++++++++++++++++++  we added (%s) to prefix list ++++++++++++++++++++",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN));
 
   /* Make new BGP info. */
   new = info_make(type, sub_type, peer, attr_new, rn);
@@ -2458,9 +2543,6 @@ zlog_debug ("*************************start of bgp_update_main function for peer
 
   /* Process change. */
   bgp_process (bgp, rn, afi, safi);
-
-  //zlog_debug ("*************************end of bgp_update_main function for peer   %s ",peer->host);
-  //print_update_prefix_list(&update_prefix_list_head);
   return 0;
 
   /* This BGP update is filtered.  Log the reason then update BGP
@@ -2714,7 +2796,6 @@ bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
       {
         //inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN)
       zlog_debug ("bgp_announce_table: we will send prefix %s  to %s",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
-	    zlog_debug ("+++++++++++time stamp for this prefix %s  is %ld",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),(attr).time_stamp_id);
 
       bgp_adj_out_set (rn, peer, &rn->p, &attr, afi, safi, ri);
       }
@@ -3414,7 +3495,6 @@ bgp_nlri_parse_ip (struct peer *peer, struct attr *attr,
                 peer->host);
       return -1;
     }
-  /* add the prefix to the time stamp data structure */
   return 0;
 }
 

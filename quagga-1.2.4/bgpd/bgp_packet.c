@@ -32,7 +32,10 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "linklist.h"
 #include "plist.h"
 #include "filter.h"
-
+#include <stdbool.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <unistd.h>
 #include "bgpd/bgpd.h"
 #include "bgpd/bgp_table.h"
 #include "bgpd/bgp_dump.h"
@@ -52,23 +55,25 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_vty.h"
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <string.h>
 /* we import CIRCA global variables */
-extern long sequence_number;
+long sequence_number_for_event_ids=1000;
 extern struct peer *avatar;
 extern int working_mode;
+#define EVENT_ID_LENGTH  20
+#define PREFIX_LENGTH  20
+#define TIME_STAMP_LENGTH 20
+
 int stream_put_prefix (struct stream *, struct prefix *);
 
 
 /* ************ related functions to CIRCA implementation start here ******* */
-
+extern prefix_list_head;
 extern struct peer *a_peer_for_maintating_head_of_data_structure;
-
-
+extern time_stamp_ds_head;
+extern converged_head;
+extern sent_head ;
+extern cause_head ;
+extern neighbours_sent_to_head;
 // A linked list node 
 struct Node 
 { 
@@ -225,11 +230,12 @@ void link_down_root_cause_event_handler(struct peer *peer, long target_router_id
 
 /*
 we first extract CIRCA sub type and then based on received sub type
- of root cause event, we will simulate root cause event
+ of root cause event, we will call root cause simulation, CDC first, second or third phase
 */
-void simulate_root_cause_event(struct peer *peer,uint32_t size)
+void CIRCA_GRC_messages_handler(struct peer *peer,int size)
 {
-  long received_sub_type_code; 
+
+long received_sub_type_code; 
   long received_seq_number;
   long received_seq_number2;
   long target_router_id; 
@@ -251,7 +257,7 @@ void simulate_root_cause_event(struct peer *peer,uint32_t size)
   end = stream_pnt (s) + size;
   if (  size == 4 )
     {
-    zlog_debug ("we have received a circa message but the lenght is 4 which is error");
+    zlog_debug ("2 we have received a circa message but the lenght is 4 which is error");
       return -1;
     }
 
@@ -270,32 +276,45 @@ void simulate_root_cause_event(struct peer *peer,uint32_t size)
     }
     int size_of_stream = s->size;
     int end_of_s = s->endp;
-
   /* get root cause evnt id. */
   received_sub_type_code = stream_getl (s);
-
+zlog_debug ("this is received_sub_type_code %ld from %s",received_sub_type_code,peer->host);
   /* get sequence number . */
   received_seq_number = stream_getl (s);
-
+zlog_debug ("this is received_seq_number %ld ",received_seq_number);
   /* get second sequence number which only being used in CBGP messages not in GRC messages . */
   received_seq_number2 = stream_getl (s);
+zlog_debug ("this is received_seq_number2 %ld ",received_seq_number2);
 
   /* get rtarget router id whic is AS number in our implementation. this could be the name of target router
 
 target router is the router which we need to simulate link up or link down with it. If for example, 
 we have a link up in ground between B and A, and B's avatar is receiving GRC message, the target router will be A's avatar.
-
   */
   target_router_id = stream_getl (s);
+zlog_debug ("this is target_router_id %ld ",target_router_id);
+  /* we will set the root cause event unique label to the global varaible */
+  
+  char * time_stamp_set_by_GRC_MSG[TIME_STAMP_LENGTH];
+  //zlog_debug ("7 we have received a circa message but the lenght is 4 which is error %s",event_id_sent_by_ground);
+  char * event_id_sent_by_ground[EVENT_ID_LENGTH];
+  strncpy(event_id_sent_by_ground,"NULL",EVENT_ID_LENGTH);
+  sprintf(event_id_sent_by_ground, "%u", received_seq_number);
+
+  char * char_my_router_id[20];
+  sprintf(char_my_router_id, "%u", peer->local_as);
+  strcat(event_id_sent_by_ground, ",");
+  strcat(event_id_sent_by_ground, char_my_router_id);
+  zlog_debug (" *********************** %s this is event_id ********* ", event_id_sent_by_ground);
+
   switch(received_sub_type_code)
   {
   case LINK_UP:// root cause event is link up
-    zlog_debug (" %s this is a link up GRC", "........");
+    zlog_debug (" %ld this is a link up GRC", received_sub_type_code);
     link_up_root_cause_event_handler(peer,target_router_id);
   break;
   case LINK_DOWN: // root cause event is link down
-    zlog_debug (" %s this is a link down GRC", "........");
-
+    zlog_debug (" %ld this is a link down GRC", received_sub_type_code);
     link_down_root_cause_event_handler(peer,target_router_id);
   break;
   case NEW_POLICY: // root cause event is link down
@@ -304,17 +323,7 @@ we have a link up in ground between B and A, and B's avatar is receiving GRC mes
   break;
   default:
   break;
-
-  }
-
-
-
-
-
-  // ip2 = stream_getl (s);
-  // ip3 = stream_getl (s);
-  // ip4 = stream_getl (s);
-
+}
 }
 
 
@@ -436,7 +445,7 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
   size_t mpattrlen_pos = 0;
   size_t mpattr_pos = 0;
 
-  sequence_number = sequence_number +1;
+  sequence_number_for_event_ids = sequence_number_for_event_ids +1;
   /* define your seq number */
 
 
@@ -449,17 +458,17 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
      * one byte message type.
      */
   s = stream_new (BGP_MAX_PACKET_SIZE);
-  bgp_packet_set_marker (s, CIRCA_MSG);
+  bgp_packet_set_marker (s, CIRCA_MSG_GRC);
 
     /* 2: Write GRC subcode 2 for GRC message*/
    stream_putl (s, grc_sub_code);
 
     /* 2: Write seq  number */
-   stream_putl (s, sequence_number);
+   stream_putl (s, sequence_number_for_event_ids);
 
     /* 2: Write seq  number2 as timestamp */
 
-   stream_putl (s, sequence_number);
+   stream_putl (s, sequence_number_for_event_ids);
 
     /* 2: Write root cause event ID */
    stream_putl (s, target_router_id);
@@ -488,12 +497,18 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
     zlog_debug ("We are at the returning packet point for sending CIRCA GRC MSG to %s", peer->host);    
     return packet;
 }
-
-
-/* Make BGP update packet.  */
+/* Make BGP update packet using CIRCA compatible function.  */
 static struct stream *
-bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
+circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
 {
+
+  if(avatar)
+  {
+    if (strcmp(peer->host,avatar->host)==0)
+      return NULL;
+  }
+  zlog_debug ("!!!!!!!!!!!!!!!!!!!!!!!!!!! We are at the bgp_update_packet to send an update to %s", peer->host);    
+
   struct stream *s;
   struct stream *snlri;
   struct bgp_adj_out *adj;
@@ -550,32 +565,123 @@ bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
     /* 1: Write the BGP message header - 16 bytes marker, 2 bytes length,
      * one byte message type.
      */
-    bgp_packet_set_marker (s, BGP_MSG_UPDATE);
-    zlog_debug(" ***************************************************** this is the received timestamp %ld ", adv->baa->attr->time_stamp_id);
-    //zlog_debug(" ***************************************************** this is the received event id %s ", adv->baa->attr->event_id);
+    bgp_packet_set_marker (s, CIRCA_MSG_UPDATE);
 
-if (strcmp(adv->baa->attr->aspath->str,"")!=0)
-{
-    //zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++This is  ASPATH of this prefix  %s %sdddd ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
+      /* here we will generate a new unique time stamp for our sending packet */
+      char * caused_time_stamp[TIME_STAMP_LENGTH];
+      char * root_cause_event_id[EVENT_ID_LENGTH];
+      char * to_be_sent_time_stamp[TIME_STAMP_LENGTH];
+      char * router_id[20];
+      sprintf(router_id, "%u", peer->local_as);
+      /* lets generate a new unique time stamp */
+      generate_time_stamp(&to_be_sent_time_stamp,router_id);
 
-    char my_delim[]= " ";
+      zlog_debug("Our time stamp: %s \n", to_be_sent_time_stamp);
+    
+        if (strcmp(adv->baa->attr->aspath->str,"")!=0)
+        {
+            //zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++This is  ASPATH of this prefix  %s %sdddd ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
 
-    char *my_ptr = strtok(adv->baa->attr->aspath->str, my_delim);
-    int my_aspath_array[4];
-    int i=0;
+            char my_delim[]= " ";
 
-    while(my_ptr != NULL)
-    {
-        my_aspath_array[i] =atoi(my_ptr);
-        i = i+1;
-        my_ptr = strtok(NULL, my_delim);
-    }
+            char *my_ptr = strtok(adv->baa->attr->aspath->str, my_delim);
+            int my_aspath_array[4];
+            int i=0;
 
-    zlog_debug(" ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ this is the first as in the next steps of a ASPATH %d ", my_aspath_array[0]);
+            while(my_ptr != NULL)
+            {
+                my_aspath_array[i] =atoi(my_ptr);
+                i = i+1;
+                my_ptr = strtok(NULL, my_delim);
+            }
 
-}
-else
-      zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We do not have ASPATH of this prefix  %s %s ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
+            zlog_debug(" ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ this prefix is not belong to us this is the first as in the next steps of a ASPATH %d and prefix %s", my_aspath_array[0],inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ));
+           int ret;
+           ret = get_event_id_time_stamp(&time_stamp_ds_head,inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),12,&root_cause_event_id,&caused_time_stamp);
+           if (ret >0)
+               zlog_debug("the received event id and time stamp for prefix are %s %s %s \n",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),root_cause_event_id,caused_time_stamp);
+           if (ret <0)
+               zlog_debug("We did not get anything for the received event id and time stamp for prefix are %s %s %s \n",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),root_cause_event_id,caused_time_stamp);
+
+        }
+        else
+        {
+          zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++This prefix is belong to us  %s %s ",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),adv->baa->attr->aspath->str);
+          zlog_debug("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          strncpy(caused_time_stamp ,'GRC', TIME_STAMP_LENGTH);
+          zlog_debug("2. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          //zlog_debug("3. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message %s",root_cause_event_id);
+
+          //zlog_debug("4. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message %s",event_id_sent_by_ground);
+          /* lets generate root cause event id
+          root cause event id is a seq number(could be current time stamp) attached by the router id 
+          we can receive this root cause event from ground or generate it by havving the last received root cause event id in a global varaible
+          */
+          // if (strcmp(event_id_sent_by_ground,"NULL")==0)
+          //     zlog_debug("5. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++event_id_sent_by_ground is NULL  %s",event_id_sent_by_ground);
+          // else
+          //     zlog_debug("6. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++event_id_sent_by_ground is not NULL  %s",event_id_sent_by_ground);
+
+          sequence_number_for_event_ids = sequence_number_for_event_ids +1;
+          zlog_debug("3. +++++++++++++++++++");
+          char char_sequence_number_for_event_ids[EVENT_ID_LENGTH];
+          zlog_debug("4. +++++++++++++++++++");
+          char str_router_id[20];
+          char * event_id_sent_by_ground2[EVENT_ID_LENGTH];
+          zlog_debug("5. +++++++++++++++++++");
+          sprintf(str_router_id, "%u", peer->local_as);
+          zlog_debug("6. +++++++++++++++++++");
+          sprintf(event_id_sent_by_ground2, "%u",sequence_number_for_event_ids);
+          strcat(event_id_sent_by_ground2, ",");
+          zlog_debug("7. +++++++++++++++++++");
+          strcat(event_id_sent_by_ground2, str_router_id);
+          zlog_debug("8. +++++++++++++++++++");
+          strncpy(root_cause_event_id ,event_id_sent_by_ground2, EVENT_ID_LENGTH);
+          zlog_debug("9. ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+
+          // struct timeval start;
+          // long mtime, seconds, to_be_sent_time_stamp;
+          // gettimeofday(&start, NULL);
+          // to_be_sent_time_stamp = start.tv_usec;
+          // zlog_debug("\n time in microseconds .... %ld \n",to_be_sent_time_stamp);
+          // char * char_to_be_sent_time_stamp[20];
+          // sprintf(char_to_be_sent_time_stamp, "%u", to_be_sent_time_stamp);
+
+        }
+    /* add to the sent data structure */
+    add_to_sent(&sent_head, to_be_sent_time_stamp, root_cause_event_id,peer);
+    /* add the peer as one of the neighbors we have sent event id to them(required for CDC third phase)*/
+    add_peer_to_neighbors_sent_to(&neighbours_sent_to_head, root_cause_event_id,peer);
+
+    addcause(&cause_head,to_be_sent_time_stamp,caused_time_stamp,root_cause_event_id,peer);
+    /* We will set this event id as an event which ha not convergence and if it has not been set before */
+    insert_in_converged(&converged_head, root_cause_event_id);
+    long router_id_value;
+    char backup_event_id[EVENT_ID_LENGTH];
+    strncpy(backup_event_id,root_cause_event_id,EVENT_ID_LENGTH);
+
+    router_id_value = str_split(backup_event_id, ',',1);
+    long seq_number_sec = str_split(backup_event_id, ',',0);
+    /* add CBGP sybtype */
+    zlog_debug("we are sending %ld as CIRCA_MSG_UPDATE to %s",CIRCA_MSG_UPDATE,peer->host);
+    stream_putl (s, CIRCA_MSG_UPDATE);
+    /* add root cause event id */
+    zlog_debug("we are sending %ld as seq_number_sec to %s",seq_number_sec,peer->host);
+
+    stream_putl (s, seq_number_sec);
+    zlog_debug("we are sending %ld as  router_id_value to %s",router_id_value,peer->host);
+
+    stream_putl (s, router_id_value);
+    /* add time stamp */
+    long router_value_in_time_stamp;
+    router_value_in_time_stamp = str_split(to_be_sent_time_stamp, ',',1);
+    long seq_number_part = str_split(backup_event_id, ',',0);
+    zlog_debug("we are sending %ld as seq_number_part  to %s",seq_number_part,peer->host);
+
+    stream_putl (s, seq_number_part);
+    zlog_debug("we are sending %ld as  router_value_in_time_stamp to %s",router_value_in_time_stamp,peer->host);
+
+    stream_putl (s, router_value_in_time_stamp);
 
     /* 2: withdrawn routes length */
     stream_putw (s, 0);
@@ -674,6 +780,180 @@ else
       BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
       stream_reset (s);
       stream_reset (snlri);
+      return packet;
+    }
+  return NULL;
+}
+
+/* Make BGP update packet.  */
+static struct stream *
+bgp_update_packet (struct peer *peer, afi_t afi, safi_t safi)
+{
+
+  if(avatar)
+  {
+    if (strcmp(peer->host,avatar->host)==0)
+      return NULL;
+  }
+  zlog_debug ("we are sending message to %ld" ,peer->as);
+  int snumber_of_sent_prefix_counter = 0;
+  struct stream *s;
+  struct stream *snlri;
+  struct bgp_adj_out *adj;
+  struct bgp_advertise *adv;
+  struct stream *packet;
+  struct bgp_node *rn = NULL;
+  struct bgp_info *binfo = NULL;
+  bgp_size_t total_attr_len = 0;
+  unsigned long attrlen_pos = 0;
+  int space_remaining = 0;
+  int space_needed = 0;
+  size_t mpattrlen_pos = 0;
+  size_t mpattr_pos = 0;
+
+  s = peer->work;
+  stream_reset (s);
+  snlri = peer->scratch;
+  stream_reset (snlri);
+
+  adv = BGP_ADV_FIFO_HEAD (&peer->sync[afi][safi]->update);
+
+  while (adv)
+    {
+      assert (adv->rn);
+      rn = adv->rn;
+      adj = adv->adj;
+      if (adv->binfo)
+        binfo = adv->binfo;
+
+      space_remaining = STREAM_CONCAT_REMAIN (s, snlri, STREAM_SIZE(s)) -
+                        BGP_MAX_PACKET_SIZE_OVERFLOW;
+      space_needed = BGP_NLRI_LENGTH + bgp_packet_mpattr_prefix_size (afi, safi, &rn->p);
+
+      /* When remaining space can't include NLRI and it's length.  */
+      if (space_remaining < space_needed)
+  break;
+
+      /* If packet is empty, set attribute. */
+      if (stream_empty (s))
+  {
+    struct prefix_rd *prd = NULL;
+    u_char *tag = NULL;
+    struct peer *from = NULL;
+
+    if (rn->prn)
+      prd = (struct prefix_rd *) &rn->prn->p;
+          if (binfo)
+            {
+              from = binfo->peer;
+              if (binfo->extra)
+                tag = binfo->extra->tag;
+            }
+
+    /* 1: Write the BGP message header - 16 bytes marker, 2 bytes length,
+     * one byte message type.
+     */
+    bgp_packet_set_marker (s, BGP_MSG_UPDATE);
+
+    /* 2: withdrawn routes length */
+    stream_putw (s, 0);
+
+    /* 3: total attributes length - attrlen_pos stores the position */
+    attrlen_pos = stream_get_endp (s);
+    stream_putw (s, 0);
+
+    /* 4: if there is MP_REACH_NLRI attribute, that should be the first
+     * attribute, according to draft-ietf-idr-error-handling. Save the
+     * position.
+     */
+    mpattr_pos = stream_get_endp(s);
+
+    /* 5: Encode all the attributes, except MP_REACH_NLRI attr. */
+    total_attr_len = bgp_packet_attribute (NULL, peer, s,
+                                           adv->baa->attr,
+                                                 ((afi == AFI_IP && safi == SAFI_UNICAST) ?
+                                                  &rn->p : NULL),
+                                                 afi, safi,
+                                           from, prd, tag);
+          space_remaining = STREAM_CONCAT_REMAIN (s, snlri, STREAM_SIZE(s)) -
+                            BGP_MAX_PACKET_SIZE_OVERFLOW;
+          space_needed = BGP_NLRI_LENGTH + bgp_packet_mpattr_prefix_size (afi, safi, &rn->p);;
+
+          /* If the attributes alone do not leave any room for NLRI then
+           * return */
+          if (space_remaining < space_needed)
+            {
+              zlog_err ("%s cannot send UPDATE, the attributes do not leave "
+                        "room for NLRI", peer->host);
+              /* Flush the FIFO update queue */
+              while (adv)
+                adv = bgp_advertise_clean (peer, adv->adj, afi, safi);
+              return NULL;
+            } 
+
+  }
+
+      if (afi == AFI_IP && safi == SAFI_UNICAST)
+  stream_put_prefix (s, &rn->p);
+      else
+  {
+    /* Encode the prefix in MP_REACH_NLRI attribute */
+    struct prefix_rd *prd = NULL;
+    u_char *tag = NULL;
+
+    if (rn->prn)
+      prd = (struct prefix_rd *) &rn->prn->p;
+    if (binfo && binfo->extra)
+      tag = binfo->extra->tag;
+
+    if (stream_empty(snlri))
+      mpattrlen_pos = bgp_packet_mpattr_start(snlri, afi, safi,
+                adv->baa->attr);
+    bgp_packet_mpattr_prefix(snlri, afi, safi, &rn->p, prd, tag);
+  }
+    snumber_of_sent_prefix_counter = snumber_of_sent_prefix_counter +1;
+
+      if (BGP_DEBUG (update, UPDATE_OUT))
+        {
+          char buf[INET6_BUFSIZ];
+
+          zlog (peer->log, LOG_DEBUG, "%s send UPDATE %s/%d",
+                peer->host,
+                inet_ntop (rn->p.family, &(rn->p.u.prefix), buf, INET6_BUFSIZ),
+                rn->p.prefixlen);
+        }
+      /* Synchnorize attribute.  */
+      if (adj->attr)
+  bgp_attr_unintern (&adj->attr);
+      else
+  peer->scount[afi][safi]++;
+
+      adj->attr = bgp_attr_intern (adv->baa->attr);
+
+      adv = bgp_advertise_clean (peer, adj, afi, safi);
+    }
+
+  if (! stream_empty (s))
+    {
+      if (!stream_empty(snlri))
+  {
+    bgp_packet_mpattr_end(snlri, mpattrlen_pos);
+    total_attr_len += stream_get_endp(snlri);
+  }
+
+      /* set the total attribute length correctly */
+      stream_putw_at (s, attrlen_pos, total_attr_len);
+
+      if (!stream_empty(snlri))
+  packet = stream_dupcat(s, snlri, mpattr_pos);
+      else
+  packet = stream_dup (s);
+      bgp_packet_set_size (packet);
+      bgp_packet_add (peer, packet);
+      BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
+      stream_reset (s);
+      stream_reset (snlri);
+      zlog_debug ("we finished building the update message including %ld prefixes to %ld" ,snumber_of_sent_prefix_counter,peer->as);
       return packet;
     }
   return NULL;
@@ -1022,10 +1302,20 @@ bgp_write_packet (struct peer *peer)
       {
         if (CHECK_FLAG (adv->binfo->peer->af_sflags[afi][safi],
       PEER_STATUS_EOR_RECEIVED))
+        {
+          if (working_mode ==1)
+          s =  circa_update_packet(peer, afi, safi);
+          if (working_mode ==0)
           s = bgp_update_packet (peer, afi, safi);
+        }
       }
     else
-      s = bgp_update_packet (peer, afi, safi);
+    {
+        if (working_mode ==1)
+          s =  circa_update_packet(peer, afi, safi);
+        if (working_mode ==0)
+          s = bgp_update_packet (peer, afi, safi);
+    }
         }
 
       if (s)
@@ -2090,14 +2380,239 @@ bgp_nlri_parse (struct peer *peer, struct attr *attr, struct bgp_nlri *packet)
   return -1;
 }
 
-/* Parse BGP Update packet and make attribute object. */
-static int
-bgp_update_receive (struct peer *peer, bgp_size_t size)
+
+/* Make CIRCA_MSG_FIZZLE packet and send it to the peer. */
+
+void
+circa_fizzle_send (struct peer *peer,char  *passed_root_cause_event_id,char *passed_time_stamp)
 {
 
 
-//struct sent* sent_head = NULL; 
-//add_to_sent(&sent_head,"1234", "12321222",peer);
+//zlog_debug ("outgoing FIZZLE message to %s,passed_root_cause_event_id  %ld, E_owner_id %ld , prefix: %s ",peer->host,passed_root_cause_event_id,E_owner_id,passed_prefix);
+
+uint32_t my_converted_time_stamp ;
+my_converted_time_stamp = 1234;
+  afi_t afi;
+  safi_t safi;
+
+
+  struct stream *s;
+  struct stream *snlri;
+  struct bgp_adj_out *adj;
+  struct bgp_advertise *adv;
+  struct stream *packet;
+  struct bgp_node *rn = NULL;
+  struct bgp_info *binfo = NULL;
+  bgp_size_t total_attr_len = 0;
+  unsigned long attrlen_pos = 0;
+  int space_remaining = 0;
+  int space_needed = 0;
+  size_t mpattrlen_pos = 0;
+  size_t mpattr_pos = 0;
+
+  s = peer->work;
+  stream_reset (s);
+  snlri = peer->scratch;
+  stream_reset (snlri);
+
+      /* 1: Write the BGP message header - 16 bytes marker, 2 bytes length,
+     * one byte message type.
+     */
+  adv = BGP_ADV_FIFO_HEAD (&peer->sync[afi][safi]->update);
+
+
+  //zlog_debug ("%s We are before the while (adv)", ".......................");
+
+  s = stream_new (BGP_MAX_PACKET_SIZE);
+  bgp_packet_set_marker (s, CIRCA_MSG_FIZZLE);
+
+    //  int length;
+    // length = strlen("shahroozshahrooz");
+
+    // char result[50]; 
+    // sprintf(result, "%u", length); 
+
+    //   zlog_debug ("%s this is shahrooz's lenghth", result);
+
+    /* 2: Write timestamp */
+   stream_putl (s, my_converted_time_stamp);
+    /* 2: Write root cause event ID */
+   stream_putl (s, my_converted_time_stamp);
+   stream_putl (s, my_converted_time_stamp);
+     stream_putl (s, my_converted_time_stamp);
+
+    /* 2: withdrawn routes length */
+    stream_putw (s, 0);
+    /* 3: total attributes length - attrlen_pos stores the position */
+    attrlen_pos = stream_get_endp (s);
+    /* 4: if there is MP_REACH_NLRI attribute, that should be the first
+     * attribute, according to draft-ietf-idr-error-handling. Save the
+     * position.
+     */
+    mpattr_pos = stream_get_endp(s);
+    //zlog_debug ("%s We are after  the while (adv)", ".....---------..................");
+     int length;
+    total_attr_len = 32;
+      /* set the total attribute length correctly */
+    //stream_putw_at (s, attrlen_pos, total_attr_len);
+  /////
+    packet = stream_dup (s);
+    bgp_packet_set_size (packet);
+    bgp_packet_add (peer, packet);
+    BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
+    stream_reset (s);
+    stream_reset (snlri);
+    zlog_debug ("We are at the returning packet point for sending FIZZLE to %s",peer->host);
+    return packet;
+}
+
+
+/* Parse CIRCA FIZZLE packet */
+static int
+circa_fizzle_receive (struct peer *peer, bgp_size_t size)
+{
+
+  //struct cause = get_cause(received_time_stamp,E_id,&causality);
+//    send_back_fizzle(cause.peer,cause.received_timestamp, E_id);
+//    delete_from_sent(received_time_stamp,E_id);
+//    if (check_if_sent_is_empty(E_id))
+//    {
+//         if(check_if_we_are_the_owner_of_event(E_id))
+//         {
+//             dessimination_phase(E_id);
+//         }
+//    }
+//
+//    retun;
+
+  return 1;
+
+}
+static int
+circa_dessimination_phase (char event_id[])
+{
+  
+//     clear_time_stamp_for_event(event_id);
+//     struct peer *peer;
+// //    for(all peers in timestamp)
+// //    {
+// //        circa_dissemination_send(peer,event_id);
+// //    }
+
+  return 1;
+
+}
+
+/* Parse BGP CONVERGENCE packet */
+static int
+circa_dissemination_receive (struct peer *peer, bgp_size_t size)
+{
+  
+    circa_dessimination_phase("E_id");
+
+  return 1;
+
+}
+
+
+
+
+/* Make BGP_MSG_CONVERGENCE packet and send it to the peer. */
+
+void
+circa_dissemination_send (struct peer *peer,uint32_t *passed_root_cause_event_id,char *our_target_prefix,uint32_t ip_addr1,uint32_t ip_addr2,uint32_t ip_addr3,uint32_t ip_addr4)
+{
+
+  zlog_debug ("outgoing CONVERGENCE message to  %s and the parameters are E_id is %ld , and prefix %s ",peer->host,passed_root_cause_event_id,our_target_prefix);
+  afi_t afi;
+  safi_t safi;
+  struct stream *s;
+  struct stream *snlri;
+  struct bgp_adj_out *adj;
+  struct bgp_advertise *adv;
+  struct stream *packet;
+  struct bgp_node *rn = NULL;
+  struct bgp_info *binfo = NULL;
+  bgp_size_t total_attr_len = 0;
+  unsigned long attrlen_pos = 0;
+  int space_remaining = 0;
+  int space_needed = 0;
+  size_t mpattrlen_pos = 0;
+  size_t mpattr_pos = 0;
+  s = peer->work;
+  stream_reset (s);
+  snlri = peer->scratch;
+  stream_reset (snlri);
+
+      /* 1: Write the BGP message header - 16 bytes marker, 2 bytes length,
+     * one byte message type.
+     */
+  adv = BGP_ADV_FIFO_HEAD (&peer->sync[afi][safi]->update);
+
+
+  //zlog_debug ("%s We are before the while (adv)", ".......................");
+
+  s = stream_new (BGP_MAX_PACKET_SIZE);
+  bgp_packet_set_marker (s, CIRCA_MSG_DISSEMINATION);
+
+ stream_putl (s, passed_root_cause_event_id);
+
+ // stream_putl (s, my_ip_array[0]);
+ // stream_putl (s, my_ip_array[1]);
+ // stream_putl (s, my_ip_array[2]);
+ // stream_putl (s, my_ip_array[3]);
+
+ stream_putl (s, ip_addr1);
+ stream_putl (s, ip_addr2);
+ stream_putl (s, ip_addr3);
+ stream_putl (s, ip_addr4);
+ 
+  /* 2: withdrawn routes length */
+  stream_putw (s, 0);
+
+
+  /* 3: total attributes length - attrlen_pos stores the position */
+  attrlen_pos = stream_get_endp (s);
+
+  stream_putw (s, 0);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+  stream_putl (s, 1);
+
+  mpattr_pos = stream_get_endp(s);
+
+
+  total_attr_len = 32;
+  packet = stream_dup (s);
+  bgp_packet_set_size (packet);
+  bgp_packet_add (peer, packet);
+  BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
+  stream_reset (s);
+  stream_reset (snlri);
+  return packet;
+
+
+}
+
+/* Parse BGP Update packet and make attribute object. */
+int
+circa_update_receive (struct peer *peer, int size)
+{
+  zlog_debug ("this is CIRCA CBGP message from %s",peer->host);
+
+
+  long seq_number_part_of_event_id;
+  long router_id_part_of_event_id;
+  long seq_number_part_of_time_stamp;
+  long router_id_part_of_time_stamp;
+  long CIRCA_sub_type;
+
+
   int ret, nlri_ret;
   u_char *end;
   struct stream *s;
@@ -2132,17 +2647,719 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
   memset (&nlris, 0, sizeof nlris);
 
   attr.extra = &extra;
-  attr.time_stamp_id =1234;
 
-  // strncpy(attr.time_stamp_id, 'time_stamp_123', 15);
-  strncpy(attr.event_id, '999,444', 50);
+  s = peer->ibuf;
+  end = stream_pnt (s) + size;
 
-  char  in_received_time_stamp[50];
-  strncpy(in_received_time_stamp, "888,444", 50);
-  zlog_debug ("+++++++++++ %s ++++++++++++++++++++++++ %s ",in_received_time_stamp,attr.event_id);
+  /* RFC1771 6.3 If the Unfeasible Routes Length or Total Attribute
+     Length is too large (i.e., if Unfeasible Routes Length + Total
+     Attribute Length + 23 exceeds the message Length), then the Error
+     Subcode is set to Malformed Attribute List.  */
+  if (stream_pnt (s) + 2 > end)
+    {
+      zlog_err ("%s [Error] Update packet error"
+    " (packet length is short for unfeasible length)",
+    peer->host);
+      bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+           BGP_NOTIFY_UPDATE_MAL_ATTR);
+      return -1;
+    }
+    /* get CIRCA related fields */
+    CIRCA_sub_type = stream_getl (s);
+    zlog_debug ("this is CIRCA_sub_type %ld from %s",CIRCA_sub_type,peer->host);
 
 
+    /* get event id sequence number section */
+    seq_number_part_of_event_id = stream_getl (s);
+    zlog_debug ("this is seq_number_part_of_event_id %ld from %s",seq_number_part_of_event_id,peer->host);
+
+    /* get event id router id section */
+    router_id_part_of_event_id = stream_getl (s);
+zlog_debug ("this is router_id_part_of_event_id %ld from %s",router_id_part_of_event_id,peer->host);
+
+    /* get time stamp sequence number section */
+    seq_number_part_of_time_stamp = stream_getl (s);
+    zlog_debug ("this is seq_number_part_of_time_stamp %ld from %s",seq_number_part_of_time_stamp,peer->host);
+
+    /* get time stamp router id section */
+    router_id_part_of_time_stamp = stream_getl (s);
+zlog_debug ("this is router_id_part_of_time_stamp %ld from %s",router_id_part_of_time_stamp,peer->host);
+
+  /* Unfeasible Route Length. */
+  withdraw_len = stream_getw (s);
+
+  /* Unfeasible Route Length check. */
+  if (stream_pnt (s) + withdraw_len > end)
+    {
+      zlog_err ("%s [Error] Update packet error"
+    " (packet unfeasible length overflow %d)",
+    peer->host, withdraw_len);
+      bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+           BGP_NOTIFY_UPDATE_MAL_ATTR);
+      return -1;
+    }
+
+  /* Unfeasible Route packet format check. */
+  if (withdraw_len > 0)
+    {
+      nlris[NLRI_WITHDRAW].afi = AFI_IP;
+      nlris[NLRI_WITHDRAW].safi = SAFI_UNICAST;
+      nlris[NLRI_WITHDRAW].nlri = stream_pnt (s);
+      nlris[NLRI_WITHDRAW].length = withdraw_len;
+      
+      if (BGP_DEBUG (packet, PACKET_RECV))
+  zlog_debug ("%s [Update:RECV] Unfeasible NLRI received", peer->host);
+
+      stream_forward_getp (s, withdraw_len);
+    }
   
+  /* Attribute total length check. */
+  if (stream_pnt (s) + 2 > end)
+    {
+      zlog_warn ("%s [Error] Packet Error"
+     " (update packet is short for attribute length)",
+     peer->host);
+      bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+           BGP_NOTIFY_UPDATE_MAL_ATTR);
+      return -1;
+    }
+
+  /* Fetch attribute total length. */
+  attribute_len = stream_getw (s);
+
+  /* Attribute length check. */
+  if (stream_pnt (s) + attribute_len > end)
+    {
+      zlog_warn ("%s [Error] Packet Error"
+     " (update packet attribute length overflow %d)",
+     peer->host, attribute_len);
+      bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+           BGP_NOTIFY_UPDATE_MAL_ATTR);
+      return -1;
+    }
+  
+  /* Certain attribute parsing errors should not be considered bad enough
+   * to reset the session for, most particularly any partial/optional
+   * attributes that have 'tunneled' over speakers that don't understand
+   * them. Instead we withdraw only the prefix concerned.
+   * 
+   * Complicates the flow a little though..
+   */
+  bgp_attr_parse_ret_t attr_parse_ret = BGP_ATTR_PARSE_PROCEED;
+  /* This define morphs the update case into a withdraw when lower levels
+   * have signalled an error condition where this is best.
+   */
+#define NLRI_ATTR_ARG (attr_parse_ret != BGP_ATTR_PARSE_WITHDRAW ? &attr : NULL)
+
+  /* Parse attribute when it exists. */
+  if (attribute_len)
+    {
+      attr_parse_ret = bgp_attr_parse (peer, &attr, attribute_len, 
+          &nlris[NLRI_MP_UPDATE], &nlris[NLRI_MP_WITHDRAW]);
+      if (attr_parse_ret == BGP_ATTR_PARSE_ERROR)
+  {
+    bgp_attr_unintern_sub (&attr);
+          bgp_attr_flush (&attr);
+    return -1;
+  }
+    }
+  
+  /* Logging the attribute. */
+  if (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW
+      || 1==1)
+    {
+      char attrstr[BUFSIZ];
+      attrstr[0] = '\0';
+
+      ret= bgp_dump_attr (peer, &attr, attrstr, BUFSIZ);
+      int lvl = (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW)
+                 ? LOG_ERR : LOG_DEBUG;
+      
+      if (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW)
+        zlog (peer->log, LOG_ERR,
+              "%s rcvd UPDATE with errors in attr(s)!! Withdrawing route.",
+              peer->host);
+
+      if (ret)
+      {
+          zlog_debug ("*******... we start parsing update message received from %ld",peer->as);
+  zlog (peer->log, lvl, "%s rcvd UPDATE w/ attr: %s from %ld",
+        peer->host, attrstr,peer->as);
+      }
+    }
+
+    /* CIRCA: start with a empty list for prefixes */
+  prefix_list_head = NULL;
+  /* Network Layer Reachability Information. */
+  update_len = end - stream_pnt (s);
+
+  if (update_len)
+    {
+      /* Set NLRI portion to structure. */
+      nlris[NLRI_UPDATE].afi = AFI_IP;
+      nlris[NLRI_UPDATE].safi = SAFI_UNICAST;
+      nlris[NLRI_UPDATE].nlri = stream_pnt (s);
+      nlris[NLRI_UPDATE].length = update_len;
+      
+      stream_forward_getp (s, update_len);
+    }
+  
+  /* Parse any given NLRIs */
+  for (i = NLRI_UPDATE; i < NLRI_TYPE_MAX; i++)
+    {
+      if (!nlris[i].nlri) continue;
+      
+      /* We use afi and safi as indices into tables and what not.  It would
+       * be impossible, at this time, to support unknown afi/safis.  And
+       * anyway, the peer needs to be configured to enable the afi/safi
+       * explicitly which requires UI support.
+       *
+       * Ignore unknown afi/safi NLRIs.
+       *
+       * Note: this means nlri[x].afi/safi still can not be trusted for
+       * indexing later in this function!
+       *
+       * Note2: This will also remap the wire code-point for VPN safi to the
+       * internal safi_t point, as needs be.
+       */
+      if (!bgp_afi_safi_valid_indices (nlris[i].afi, &nlris[i].safi))
+        {
+          plog_info (peer->log,
+                     "%s [Info] UPDATE with unsupported AFI/SAFI %u/%u",
+                     peer->host, nlris[i].afi, nlris[i].safi);
+          continue;
+        }
+      
+      /* NLRI is processed only when the peer is configured specific
+         Address Family and Subsequent Address Family. */
+      if (!peer->afc[nlris[i].afi][nlris[i].safi])
+        {
+          plog_info (peer->log,
+                     "%s [Info] UPDATE for non-enabled AFI/SAFI %u/%u",
+                     peer->host, nlris[i].afi, nlris[i].safi);
+          continue;
+        }
+      
+      /* EoR handled later */
+      if (nlris[i].length == 0)
+        continue;
+      
+      switch (i)
+        {
+          case NLRI_UPDATE:
+          case NLRI_MP_UPDATE:
+            nlri_ret = bgp_nlri_parse (peer, NLRI_ATTR_ARG, &nlris[i]);
+            break;
+          case NLRI_WITHDRAW:
+          case NLRI_MP_WITHDRAW:
+            nlri_ret = bgp_nlri_parse (peer, NULL, &nlris[i]);
+        }
+      
+      if (nlri_ret < 0)
+        {
+          plog_err (peer->log, 
+                    "%s [Error] Error parsing NLRI", peer->host);
+          if (peer->status == Established)
+            bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR,
+                             i <= NLRI_WITHDRAW 
+                               ? BGP_NOTIFY_UPDATE_INVAL_NETWORK
+                               : BGP_NOTIFY_UPDATE_OPT_ATTR_ERR);
+          bgp_attr_unintern_sub (&attr);
+          return -1;
+        }
+    }
+  
+  /* EoR checks.
+   *
+   * Non-MP IPv4/Unicast EoR is a completely empty UPDATE
+   * and MP EoR should have only an empty MP_UNREACH
+   */
+  if (!update_len && !withdraw_len
+      && nlris[NLRI_MP_UPDATE].length == 0)
+    {
+      afi_t afi = 0;
+      safi_t safi;
+      
+      /* Non-MP IPv4/Unicast is a completely empty UPDATE - already
+       * checked update and withdraw NLRI lengths are 0.
+       */ 
+      if (!attribute_len)
+        {
+          afi = AFI_IP;
+          safi = SAFI_UNICAST;
+        }
+      /* otherwise MP AFI/SAFI is an empty update, other than an empty
+       * MP_UNREACH_NLRI attr (with an AFI/SAFI we recognise).
+       */
+      else if (attr.flag == BGP_ATTR_MP_UNREACH_NLRI
+               && nlris[NLRI_MP_WITHDRAW].length == 0
+               && bgp_afi_safi_valid_indices (nlris[NLRI_MP_WITHDRAW].afi,
+                                              &nlris[NLRI_MP_WITHDRAW].safi))
+        {
+          afi = nlris[NLRI_MP_WITHDRAW].afi;
+          safi = nlris[NLRI_MP_WITHDRAW].safi;
+        }
+      
+      if (afi && peer->afc[afi][safi])
+        {
+    /* End-of-RIB received */
+    SET_FLAG (peer->af_sflags[afi][safi],
+        PEER_STATUS_EOR_RECEIVED);
+
+    /* NSF delete stale route */
+    if (peer->nsf[afi][safi])
+      bgp_clear_stale_route (peer, afi, safi);
+
+    if (BGP_DEBUG (normal, NORMAL))
+      zlog (peer->log, LOG_DEBUG, "rcvd End-of-RIB for %s from %s",
+      peer->host, afi_safi_print (afi, safi));
+        }
+    }
+  
+  /* we will add the time stamp and prefix list of the received update to the time_stamp ds here */
+  /* lets use two default time stamp and event id for received update first
+  We will add time stamp and event id to the CBGP pachets */
+    if (prefix_list_head != NULL)
+    {
+    zlog_debug("1lets add new time stamp with prefix list");
+    char * in_event_id[EVENT_ID_LENGTH];
+    char * in_time_stamp_id[TIME_STAMP_LENGTH];
+    sprintf(in_event_id, "%u", seq_number_part_of_event_id);
+    strcat(in_event_id, ",");
+    zlog_debug("2lets add new time stamp with prefix list");
+    char * char_router_id_part_of_event_id[EVENT_ID_LENGTH];
+    sprintf(char_router_id_part_of_event_id, "%u", router_id_part_of_event_id);
+    strcat(in_event_id, char_router_id_part_of_event_id);
+    zlog_debug("3lets add new time stamp with prefix list");
+
+    sprintf(in_time_stamp_id, "%u", seq_number_part_of_time_stamp);
+    strcat(in_time_stamp_id, ",");
+        zlog_debug("4lets add new time stamp with prefix list");
+
+    char * char_router_id_part_of_time_stamp[EVENT_ID_LENGTH];
+
+    sprintf(char_router_id_part_of_time_stamp, "%u", router_id_part_of_time_stamp);
+
+    strcat(in_time_stamp_id, char_router_id_part_of_time_stamp);
+    zlog_debug("5lets add new time stamp with prefix list");
+
+    // strncpy(in_time_stamp_id ,"time_stamp_id,987", TIME_STAMP_LENGTH);
+    // strncpy(in_event_id ,"event_id,56789", EVENT_ID_LENGTH);
+    
+    add_new_time_stamp(&time_stamp_ds_head,in_event_id,in_time_stamp_id,peer->local_as,prefix_list_head,peer);
+    zlog_debug("lets print time stamp with their prefix list");
+    print_time_stamp(&time_stamp_ds_head);
+    insert_in_converged(&converged_head, in_event_id);
+  }
+
+  /* Everything is done.  We unintern temporary structures which
+     interned in bgp_attr_parse(). */
+  bgp_attr_unintern_sub (&attr);
+  bgp_attr_flush (&attr);
+
+  /* If peering is stopped due to some reason, do not generate BGP
+     event.  */
+  if (peer->status != Established)
+    return 0;
+
+  /* Increment packet counter. */
+  peer->update_in++;
+  peer->update_time = bgp_clock ();
+
+  /* Rearm holdtime timer */
+  BGP_TIMER_OFF (peer->t_holdtime);
+  bgp_timer_set (peer);
+
+  return 0;
+}
+
+// void backup_received()
+// {
+//   zlog_debug ("+++++++++++++++++++++++++++++++++ We received a new update and a new time stamp from %s ",peer->host);
+
+//   long seq_number_part_of_event_id;
+//   long router_id_part_of_event_id;
+//   long seq_number_part_of_time_stamp;
+//   long router_id_part_of_time_stamp;
+//   long CIRCA_sub_type;
+//   u_char *end;
+//   struct stream *s;
+//   int ret, nlri_ret;
+//   u_char *end;
+//   struct stream *s;
+//   struct attr attr;
+//   struct attr_extra extra;
+//   bgp_size_t attribute_len;
+//   bgp_size_t update_len;
+//   bgp_size_t withdraw_len;
+//   int i;
+  
+//   enum NLRI_TYPES {
+//     NLRI_UPDATE,
+//     NLRI_WITHDRAW,
+//     NLRI_MP_UPDATE,
+//     NLRI_MP_WITHDRAW,
+//     NLRI_TYPE_MAX,
+//   };
+//   struct bgp_nlri nlris[NLRI_TYPE_MAX];
+  
+  
+//   /* Status must be Established. */
+//   if (peer->status != Established) 
+//     {
+//       zlog_err ("%s [FSM] CIRCA packet received under status %s",
+//     peer->host, LOOKUP (bgp_status_msg, peer->status));
+//       bgp_notify_send (peer, BGP_NOTIFY_FSM_ERR, 0);
+//       return -1;
+//     }
+
+//   s = peer->ibuf;
+//   char result7[50]; 
+//   end = stream_pnt (s) + size;
+//   if (  size == 4 )
+//     {
+//     zlog_debug ("2 we have received a circa message but the lenght is 4 which is error");
+//       return -1;
+//     }
+
+//   /* RFC1771 6.3 If the Unfeasible Routes Length or Total Attribute
+//      Length is too large (i.e., if Unfeasible Routes Length + Total
+//      Attribute Length + 23 exceeds the message Length), then the Error
+//      Subcode is set to Malformed Attribute List.  */
+//   if (stream_pnt (s) + 2 > end)
+//     {
+//       zlog_err ("%s [Error] CIRCA packet error"
+//     " (packet length is short for unfeasible length)",
+//     peer->host);
+//       bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+//            BGP_NOTIFY_UPDATE_MAL_ATTR);
+//       return -1;
+//     }
+//     int size_of_stream = s->size;
+//     int end_of_s = s->endp;
+//   /* get root cause evnt id. */
+//   CIRCA_sub_type = stream_getl (s);
+// zlog_debug ("this is CIRCA_sub_type %ld from %s",CIRCA_sub_type,peer->host);
+//   /* get sequence number . */
+//   seq_number_part_of_event_id = stream_getl (s);
+// zlog_debug ("this is seq_number_part_of_event_id %ld ",seq_number_part_of_event_id);
+//   /* get second sequence number which only being used in CBGP messages not in GRC messages . */
+//   seq_number_part_of_time_stamp = stream_getl (s);
+// zlog_debug ("this is seq_number_part_of_time_stamp %ld ",seq_number_part_of_time_stamp);
+
+//   /* get rtarget router id whic is AS number in our implementation. this could be the name of target router
+
+// target router is the router which we need to simulate link up or link down with it. If for example, 
+// we have a link up in ground between B and A, and B's avatar is receiving GRC message, the target router will be A's avatar.
+//   */
+//   router_id_part_of_time_stamp = stream_getl (s);
+// zlog_debug ("this is router_id_part_of_time_stamp %ld ",router_id_part_of_time_stamp);
+//   /* we will set the root cause event unique label to the global varaible */
+  
+
+//   /* Unfeasible Route Length. */
+//   withdraw_len = stream_getw (s);
+//   zlog_debug ("%ld received withdraw_len", withdraw_len);
+//   /* Unfeasible Route Length check. */
+//   if (stream_pnt (s) + withdraw_len > end)
+//     {
+//       zlog_err ("%s [Error] Update packet error"
+//     " (packet unfeasible length overflow %d)",
+//     peer->host, withdraw_len);
+//       bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+//            BGP_NOTIFY_UPDATE_MAL_ATTR);
+//       return -1;
+//     }
+
+//   /* Unfeasible Route packet format check. */
+//   if (withdraw_len > 0)
+//     {
+//       nlris[NLRI_WITHDRAW].afi = AFI_IP;
+//       nlris[NLRI_WITHDRAW].safi = SAFI_UNICAST;
+//       nlris[NLRI_WITHDRAW].nlri = stream_pnt (s);
+//       nlris[NLRI_WITHDRAW].length = withdraw_len;
+      
+//       if (BGP_DEBUG (packet, PACKET_RECV))
+//   zlog_debug ("%s [Update:RECV] Unfeasible NLRI received", peer->host);
+
+//       stream_forward_getp (s, withdraw_len);
+//     }
+  
+//   /* Attribute total length check. */
+//   if (stream_pnt (s) + 2 > end)
+//     {
+//       zlog_warn ("%s [Error] Packet Error"
+//      " (update packet is short for attribute length)",
+//      peer->host);
+//       bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+//            BGP_NOTIFY_UPDATE_MAL_ATTR);
+//       return -1;
+//     }
+
+//   /* Fetch attribute total length. */
+//   attribute_len = stream_getw (s);
+
+//   /* Attribute length check. */
+//   if (stream_pnt (s) + attribute_len > end)
+//     {
+//       zlog_warn ("%s [Error] Packet Error"
+//      " (update packet attribute length overflow %d)",
+//      peer->host, attribute_len);
+//       bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR, 
+//            BGP_NOTIFY_UPDATE_MAL_ATTR);
+//       return -1;
+//     }
+  
+//   /* Certain attribute parsing errors should not be considered bad enough
+//    * to reset the session for, most particularly any partial/optional
+//    * attributes that have 'tunneled' over speakers that don't understand
+//    * them. Instead we withdraw only the prefix concerned.
+//    * 
+//    * Complicates the flow a little though..
+//    */
+//   bgp_attr_parse_ret_t attr_parse_ret = BGP_ATTR_PARSE_PROCEED;
+//   /* This define morphs the update case into a withdraw when lower levels
+//    * have signalled an error condition where this is best.
+//    */
+// #define NLRI_ATTR_ARG (attr_parse_ret != BGP_ATTR_PARSE_WITHDRAW ? &attr : NULL)
+
+//   /* Parse attribute when it exists. */
+//   if (attribute_len)
+//     {
+//       attr_parse_ret = bgp_attr_parse (peer, &attr, attribute_len, 
+//           &nlris[NLRI_MP_UPDATE], &nlris[NLRI_MP_WITHDRAW]);
+//       if (attr_parse_ret == BGP_ATTR_PARSE_ERROR)
+//   {
+//     bgp_attr_unintern_sub (&attr);
+//           bgp_attr_flush (&attr);
+//     return -1;
+//   }
+//     }
+  
+//   /* Logging the attribute. */
+//   if (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW
+//       || BGP_DEBUG (update, UPDATE_IN))
+//     {
+//       char attrstr[BUFSIZ];
+//       attrstr[0] = '\0';
+
+//       ret= bgp_dump_attr (peer, &attr, attrstr, BUFSIZ);
+//       int lvl = (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW)
+//                  ? LOG_ERR : LOG_DEBUG;
+      
+//       if (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW)
+//         zlog (peer->log, LOG_ERR,
+//               "%s rcvd UPDATE with errors in attr(s)!! Withdrawing route.",
+//               peer->host);
+
+//       if (ret)
+//   zlog (peer->log, lvl, "%s rcvd UPDATE w/ attr: %s",
+//         peer->host, attrstr);
+//     }
+//     /* Start with the empty list of prefixes*/
+//     prefix_list_head = NULL;
+
+//   /* Network Layer Reachability Information. */
+//   update_len = end - stream_pnt (s);
+
+//   if (update_len)
+//     {
+//       /* Set NLRI portion to structure. */
+//       nlris[NLRI_UPDATE].afi = AFI_IP;
+//       nlris[NLRI_UPDATE].safi = SAFI_UNICAST;
+//       nlris[NLRI_UPDATE].nlri = stream_pnt (s);
+//       nlris[NLRI_UPDATE].length = update_len;
+      
+//       stream_forward_getp (s, update_len);
+//     }
+  
+//   /* Parse any given NLRIs */
+//   for (i = NLRI_UPDATE; i < NLRI_TYPE_MAX; i++)
+//     {
+//       if (!nlris[i].nlri) continue;
+      
+//       /* We use afi and safi as indices into tables and what not.  It would
+//        * be impossible, at this time, to support unknown afi/safis.  And
+//        * anyway, the peer needs to be configured to enable the afi/safi
+//        * explicitly which requires UI support.
+//        *
+//        * Ignore unknown afi/safi NLRIs.
+//        *
+//        * Note: this means nlri[x].afi/safi still can not be trusted for
+//        * indexing later in this function!
+//        *
+//        * Note2: This will also remap the wire code-point for VPN safi to the
+//        * internal safi_t point, as needs be.
+//        */
+//       if (!bgp_afi_safi_valid_indices (nlris[i].afi, &nlris[i].safi))
+//         {
+//           plog_info (peer->log,
+//                      "%s [Info] UPDATE with unsupported AFI/SAFI %u/%u",
+//                      peer->host, nlris[i].afi, nlris[i].safi);
+//           continue;
+//         }
+      
+//       /* NLRI is processed only when the peer is configured specific
+//          Address Family and Subsequent Address Family. */
+//       if (!peer->afc[nlris[i].afi][nlris[i].safi])
+//         {
+//           plog_info (peer->log,
+//                      "%s [Info] UPDATE for non-enabled AFI/SAFI %u/%u",
+//                      peer->host, nlris[i].afi, nlris[i].safi);
+//           continue;
+//         }
+      
+//       /* EoR handled later */
+//       if (nlris[i].length == 0)
+//         continue;
+      
+//       switch (i)
+//         {
+//           case NLRI_UPDATE:
+//           case NLRI_MP_UPDATE:
+//             nlri_ret = bgp_nlri_parse (peer, NLRI_ATTR_ARG, &nlris[i]);
+//             break;
+//           case NLRI_WITHDRAW:
+//           case NLRI_MP_WITHDRAW:
+//             nlri_ret = bgp_nlri_parse (peer, NULL, &nlris[i]);
+//         }
+      
+//       if (nlri_ret < 0)
+//         {
+//           plog_err (peer->log, 
+//                     "%s [Error] Error parsing NLRI", peer->host);
+//           if (peer->status == Established)
+//             bgp_notify_send (peer, BGP_NOTIFY_UPDATE_ERR,
+//                              i <= NLRI_WITHDRAW 
+//                                ? BGP_NOTIFY_UPDATE_INVAL_NETWORK
+//                                : BGP_NOTIFY_UPDATE_OPT_ATTR_ERR);
+//           bgp_attr_unintern_sub (&attr);
+//           return -1;
+//         }
+//     }
+  
+//   /* EoR checks.
+//    *
+//    * Non-MP IPv4/Unicast EoR is a completely empty UPDATE
+//    * and MP EoR should have only an empty MP_UNREACH
+//    */
+//   if (!update_len && !withdraw_len
+//       && nlris[NLRI_MP_UPDATE].length == 0)
+//     {
+//       afi_t afi = 0;
+//       safi_t safi;
+      
+//       /* Non-MP IPv4/Unicast is a completely empty UPDATE - already
+//        * checked update and withdraw NLRI lengths are 0.
+//        */ 
+//       if (!attribute_len)
+//         {
+//           afi = AFI_IP;
+//           safi = SAFI_UNICAST;
+//         }
+//       /* otherwise MP AFI/SAFI is an empty update, other than an empty
+//        * MP_UNREACH_NLRI attr (with an AFI/SAFI we recognise).
+//        */
+//       else if (attr.flag == BGP_ATTR_MP_UNREACH_NLRI
+//                && nlris[NLRI_MP_WITHDRAW].length == 0
+//                && bgp_afi_safi_valid_indices (nlris[NLRI_MP_WITHDRAW].afi,
+//                                               &nlris[NLRI_MP_WITHDRAW].safi))
+//         {
+//           afi = nlris[NLRI_MP_WITHDRAW].afi;
+//           safi = nlris[NLRI_MP_WITHDRAW].safi;
+//         }
+      
+//       if (afi && peer->afc[afi][safi])
+//         {
+//     /* End-of-RIB received */
+//     SET_FLAG (peer->af_sflags[afi][safi],
+//         PEER_STATUS_EOR_RECEIVED);
+
+//     /* NSF delete stale route */
+//     if (peer->nsf[afi][safi])
+//       bgp_clear_stale_route (peer, afi, safi);
+
+//     if (BGP_DEBUG (normal, NORMAL))
+//       zlog (peer->log, LOG_DEBUG, "rcvd End-of-RIB for %s from %s",
+//       peer->host, afi_safi_print (afi, safi));
+//         }
+//     }
+  
+// /* we will add the time stamp and prefix list of the received update to the time_stamp ds here */
+//   /* lets use two default time stamp and event id for received update first
+//   We will add time stamp and event id to the CBGP pachets */
+//     if (prefix_list_head != NULL)
+//     {
+//     char * in_event_id[EVENT_ID_LENGTH];
+//     char * in_time_stamp_id[TIME_STAMP_LENGTH];
+//     long AS_owner_id =1234;
+//     strncpy(in_time_stamp_id ,"time_stamp_id,987", TIME_STAMP_LENGTH);
+//     strncpy(in_event_id ,"event_id,56789", EVENT_ID_LENGTH);
+//     zlog_debug("lets add new time stamp with prefix list");
+//     add_new_time_stamp(&time_stamp_ds_head,in_event_id,in_time_stamp_id,AS_owner_id,prefix_list_head);
+//     zlog_debug("lets print time stamp with their prefix list");
+
+//     print_time_stamp(&time_stamp_ds_head);
+//     insert_in_converged(&converged_head, in_event_id);
+//   }
+//   /* Everything is done.  We unintern temporary structures which
+//      interned in bgp_attr_parse(). */
+//   bgp_attr_unintern_sub (&attr);
+//   bgp_attr_flush (&attr);
+
+//   /* If peering is stopped due to some reason, do not generate BGP
+//      event.  */
+//   if (peer->status != Established)
+//     return 0;
+
+//   /* Increment packet counter. */
+//   peer->update_in++;
+//   peer->update_time = bgp_clock ();
+
+//   /* Rearm holdtime timer */
+//   BGP_TIMER_OFF (peer->t_holdtime);
+//   bgp_timer_set (peer);
+
+//   return 0;
+// }
+/* Parse BGP Update packet and make attribute object. */
+static int
+bgp_update_receive (struct peer *peer, bgp_size_t size)
+{
+  int ret, nlri_ret;
+  u_char *end;
+  struct stream *s;
+  struct attr attr;
+  struct attr_extra extra;
+  bgp_size_t attribute_len;
+  bgp_size_t update_len;
+  bgp_size_t withdraw_len;
+  int i;
+  
+  enum NLRI_TYPES {
+    NLRI_UPDATE,
+    NLRI_WITHDRAW,
+    NLRI_MP_UPDATE,
+    NLRI_MP_WITHDRAW,
+    NLRI_TYPE_MAX,
+  };
+  struct bgp_nlri nlris[NLRI_TYPE_MAX];
+
+  /* Status must be Established. */
+  if (peer->status != Established) 
+    {
+      zlog_err ("%s [FSM] Update packet received under status %s",
+    peer->host, LOOKUP (bgp_status_msg, peer->status));
+      bgp_notify_send (peer, BGP_NOTIFY_FSM_ERR, 0);
+      return -1;
+    }
+
+  /* Set initial values. */
+  memset (&attr, 0, sizeof (struct attr));
+  memset (&extra, 0, sizeof (struct attr_extra));
+  memset (&nlris, 0, sizeof nlris);
+
+  attr.extra = &extra;
 
   s = peer->ibuf;
   end = stream_pnt (s) + size;
@@ -2242,7 +3459,7 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
   
   /* Logging the attribute. */
   if (attr_parse_ret == BGP_ATTR_PARSE_WITHDRAW
-      || BGP_DEBUG (update, UPDATE_IN))
+      || 1==1)
     {
       char attrstr[BUFSIZ];
       attrstr[0] = '\0';
@@ -2257,12 +3474,15 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
               peer->host);
 
       if (ret)
-  zlog (peer->log, lvl, "%s rcvd UPDATE w/ attr: %s",
-        peer->host, attrstr);
+      {
+          zlog_debug ("*******... we start parsing update message received from %ld",peer->as);
+  zlog (peer->log, lvl, "%s rcvd UPDATE w/ attr: %s from %ld",
+        peer->host, attrstr,peer->as);
+      }
     }
   
   /* Network Layer Reachability Information. */
-  update_len = end - stream_pnt (s);
+
 
   if (update_len)
     {
@@ -2339,7 +3559,6 @@ bgp_update_receive (struct peer *peer, bgp_size_t size)
           return -1;
         }
     }
-    /* we can check the list of prefixes for the timestamp and found if it is empty or not */
   
   /* EoR checks.
    *
@@ -2947,6 +4166,8 @@ int
 bgp_read (struct thread *thread)
 {
   
+  
+
   int ret;
   u_char type = 0;
   u_char root_cause_id = 0;
@@ -3090,7 +4311,11 @@ bgp_read (struct thread *thread)
     && type != BGP_MSG_NOTIFY && type != BGP_MSG_KEEPALIVE 
     && type != BGP_MSG_ROUTE_REFRESH_NEW
     && type != BGP_MSG_ROUTE_REFRESH_OLD
-    && type != CIRCA_MSG)
+    && type != BGP_MSG_CAPABILITY && type != CIRCA_MSG_FIZZLE
+    && type != CIRCA_MSG_FIZZLE
+    && type != CIRCA_MSG_UPDATE
+    && type != CIRCA_MSG_DISSEMINATION
+    && type != CIRCA_MSG_GRC)
   {
     if (BGP_DEBUG (normal, NORMAL))
       plog_debug (peer->log,
@@ -3117,6 +4342,7 @@ bgp_read (struct thread *thread)
     || (type == BGP_MSG_ROUTE_REFRESH_NEW && size < BGP_MSG_ROUTE_REFRESH_MIN_SIZE)
     || (type == BGP_MSG_ROUTE_REFRESH_OLD && size < BGP_MSG_ROUTE_REFRESH_MIN_SIZE)
     || (type == BGP_MSG_CAPABILITY && size < BGP_MSG_CAPABILITY_MIN_SIZE)
+    || (type == CIRCA_MSG_UPDATE && size < CIRCA_MSG_MIN_SIZE)
     )
   {
     if (BGP_DEBUG (normal, NORMAL))
@@ -3174,33 +4400,20 @@ bgp_read (struct thread *thread)
     //zlog_debug ("we are going to check the type in switch " );
 
 
-
   switch (type) 
     {
     case BGP_MSG_OPEN:
       peer->open_in++;
       bgp_open_receive (peer, size); /* XXX return value ignored! */
       break;
-
-    // case BGP_MSG_CONVERGENCE:
-    //   //zlog_debug ("%s The type of received packet is BGP_MSG_CONVERGENCE, let's pars it", "horraaaaaaa........");
-    //   bgp_convergence_receive (peer, size);
-    //   break;
     case BGP_MSG_UPDATE:
-      //zlog_debug ("%s we received an new update packet ", "!!!!!!!!!!!!!!!!!!!!" );
       peer->readtime = bgp_recent_clock ();
       bgp_update_receive (peer, size);
       break;
-    // case BGP_MSG_FIZZLE:
-    //   //zlog_debug ("%s The type of received packet is FIZZLE, let's pars it", "horraaaaaaa........");
-    //   bgp_fizzle_receive (peer, size);
-    //   break;
     case BGP_MSG_NOTIFY:
       bgp_notify_receive (peer, size);
       break;
     case BGP_MSG_KEEPALIVE:
-
-      //zlog_debug ("%s The type of received packet is BGP_MSG_KEEPALIVE, let's pars it", "horraaaaaaa........");
       peer->readtime = bgp_recent_clock ();
       bgp_keepalive_receive (peer, size);
       break;
@@ -3213,10 +4426,24 @@ bgp_read (struct thread *thread)
       peer->dynamic_cap_in++;
       bgp_capability_receive (peer, size);
       break;
-    case CIRCA_MSG:
-      zlog_debug ("%s The type of received packet is CIRCA_MSG, let's pars it", "horraaaaaaa........");
-      simulate_root_cause_event(peer,size);
+    case CIRCA_MSG_GRC:
+      zlog_debug ("%s The type of received packet is CIRCA_MSG_GRC, let's pars it from %s", "horraaaaaaa........",peer->host);
+      CIRCA_GRC_messages_handler(peer,size);
       break;
+    case CIRCA_MSG_UPDATE:
+      zlog_debug ("%s The type of received packet is CIRCA_MSG_UPDATE, let's pars it from %s", "horraaaaaaa........",peer->host);
+      peer->readtime = bgp_recent_clock ();
+      circa_update_receive(peer,size);
+      break;
+    case CIRCA_MSG_FIZZLE:
+      zlog_debug ("%s The type of received packet is CIRCA_MSG_FIZZLE, let's pars it from %s", "horraaaaaaa........",peer->host);
+      circa_fizzle_receive(peer,size);
+      break;
+    case CIRCA_MSG_DISSEMINATION:
+      zlog_debug ("%s The type of received packet is CIRCA_MSG_DISSEMINATION, let's pars it from %s", "horraaaaaaa........",peer->host);
+      circa_dissemination_receive(peer,size);
+      break;
+
     }
 
   /* Clear input buffer. */

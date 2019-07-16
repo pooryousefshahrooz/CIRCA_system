@@ -39,7 +39,7 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 
 
 /* we import CIRCA global variables here*/
-extern long sequence_number;
+//extern long sequence_number_for_event_ids;
 extern struct peer *avatar;
 extern int working_mode;
 

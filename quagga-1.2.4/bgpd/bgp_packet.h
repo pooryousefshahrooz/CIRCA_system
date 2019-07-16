@@ -58,7 +58,7 @@ link up or link down root cause simulator functions based on the grc sub type va
 the second argument is the size of the packet which we need to check and place the positions of the field sin GRC messages.
 */
 
-extern void simulate_root_cause_event(struct peer *,uint32_t );
+extern void  CIRCA_sub_type_messages_handler(struct peer *,int);
 
 // *******************. CIRCA related function definition ends here ************
 
