@@ -49,6 +49,19 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 /* we import CIRCA global variables */
 extern struct peer *avatar;
 extern int working_mode;
+extern prefix_list_head;
+extern struct peer *a_peer_for_maintating_head_of_data_structure;
+extern time_stamp_ds_head;
+extern converged_head;
+extern sent_head ;
+extern cause_head ;
+extern neighbours_sent_to_head;
+extern peer_list_for_sending_head;
+extern caused_time_stamps_head;
+extern long sequence_number_for_event_ids;
+extern char * global_event_id[EVENT_ID_LENGTH];
+
+
 /* BGP FSM (finite state machine) has three types of functions.  Type
    one is thread functions.  Type two is event functions.  Type three
    is FSM functions.  Timer functions are set by bgp_timer_set
@@ -469,10 +482,26 @@ bgp_stop (struct peer *peer)
       {
   zlog_info ("%%ADJCHANGE: neighbor %s Down %s", peer->host,
                    peer_down_str [(int) peer->last_reset]);
+      time_stamp_ds_head = NULL;
+      prefix_list_head = NULL;
+      sent_head = NULL;
+      cause_head = NULL;
+      converged_head = NULL;
+      neighbours_sent_to_head = NULL;
+      //peer_list_for_sending_head = NULL;
+      //caused_time_stamps_head = NULL;
+
 
       /*  here we will send our grc link down message to our avatar */
       /* First we check if we are in ground mode */
       }
+      // if(working_mode==1)
+      //   if(avatar && strcmp(peer->host,avatar->host)!=0)
+      //   {
+      //     generate_global_event_id(peer->local_as,);
+      //   }
+
+
       if (working_mode ==0)
       /* then we check if the router avatar has been set or not */
       if (avatar)
@@ -902,12 +931,30 @@ bgp_establish (struct peer *peer)
   /* bgp log-neighbor-changes of neighbor Up */
   if (bgp_flag_check (peer->bgp, BGP_FLAG_LOG_NEIGHBOR_CHANGES))
     zlog_info ("%%ADJCHANGE: neighbor %s Up", peer->host);
+  
+      time_stamp_ds_head = NULL;
+      prefix_list_head = NULL;
+      sent_head = NULL;
+      cause_head = NULL;
+      converged_head = NULL;
+      neighbours_sent_to_head = NULL;
+      //peer_list_for_sending_head = NULL;
+      //caused_time_stamps_head = NULL;
+      /*  here we will send our grc link down message to our avatar */
+      /* First we check if we are in ground mode */
+      // if(working_mode==1)
+      //   if(avatar && strcmp(peer->host,avatar->host)!=0)
+      //   {
+      //     generate_global_event_id(peer->local_as);
+      //   }
   /* first we check if the avatar property of the neighbor is 1(means it is avatar router) or not */
   if (peer->avatar ==1)
   {
     /* we save peer structure in avatar as our avatar */
     avatar = peer;
     zlog_debug ("we set  %s as our avatar ",peer->host);
+    
+    
   }
   else
     {

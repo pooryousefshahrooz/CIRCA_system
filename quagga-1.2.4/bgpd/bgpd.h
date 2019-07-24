@@ -40,29 +40,26 @@ We define our CIRCA system data structures here
 #define EVENT_ID_LENGTH  20
 #define PREFIX_LENGTH  20
 #define TIME_STAMP_LENGTH 20
+#define ASPATH_SIZE 50
+#define GRC_MSG_TIME_STAMP "GRC"
+struct peer *avatar;
+int working_mode;
+//long sequence_number_for_event_ids=1000;
+
 
 /* a list of prefixes  */
 struct update_prefix_list{
     char * prefix[PREFIX_LENGTH];
+    struct prefix * prefix_struct;
+    bool processed_value;
     struct update_prefix_list * next;
 };
 
-/* this structure is for saving the list of received prefixes which
- * we can use if  all the prefixes in the list of prefixes for
- * the timestamp have been fizzled or not */
-struct time_stamp_ds{
-    char  *time_stamp[EVENT_ID_LENGTH];
-    struct update_prefix_list *upl;
-    struct update_prefix_list *saved_prefixes;
+/* a list of prefixes  */
+struct witdraw_prefix{
+    char * prefix[PREFIX_LENGTH];
     struct peer * received_from_peer;
-    struct aspath *update_aspath;
-    struct time_stamp_ds * next;
-};
-
-/* a list of timestamps  */
-struct list_of_time_stamp{
-    struct time_stamp_ds tsp;
-    struct list_of_time_stamp * next;
+    struct update_prefix_list * next;
 };
 
 /* a list of root cause event ids  */
@@ -71,94 +68,138 @@ struct list_of_event_ids{
     struct list_of_event_ids * next;
 };
 
+
+/*This data structure will save the state of root cause events if they have converged or not.*/
+struct converged{
+    char * event_id[EVENT_ID_LENGTH];
+    bool converged_value;
+    struct list_of_event_ids concurrent_events;
+    struct converged* next;
+};
+
 /* A list of peers*/
 struct peer_list{
-    struct peer* peer;
+    struct peer * peer;
     struct peer_list * next;
 };
 
-/* we will use this data strucure when we receive a convergence message for root cause event
- * id E_id and then send it to the peers we have advertize updates for e_id
-   THIS IS FOR THIRD PHASE OF DCD PROTOCOL */
+struct peer_list_for_sending{
+    struct peer * peer;
+    struct peer_list_for_sending * next;
+};
+
 struct neighbours_sent_to{
     char * event_id[EVENT_ID_LENGTH];
     struct peer_list* peer_list;
     struct neighbours_sent_to * next;
 };
 
-/*This data structure will save the state of root cause events if they have converged or not.*/
-struct converged{
-    char * event_id[EVENT_ID_LENGTH];
-    bool converged_yet;
-    struct list_of_event_ids concurrent_events;
-    struct converged* next;
-};
-
 /*for building the message dag and find which timestamp has cause which timestamp== which message caused which message*/
 struct cause{
     char *sending_timestamp[TIME_STAMP_LENGTH];
-    char *event_id;
+    char *event_id[EVENT_ID_LENGTH];
     struct peer *received_from_peer;
     char * as_path;
-    char *received_timestamp[EVENT_ID_LENGTH];
+    char *received_timestamp[TIME_STAMP_LENGTH];
     struct cause* next;
 };
 
-/* event data structure will contain the list of timestamps for each event id */
-struct event{
-    char * event_id[EVENT_ID_LENGTH];
-    struct list_of_time_stamp lts;
-    struct  event * next;
+
+/* this structure is for saving the list of received prefixes which
+ * we can use if  all the prefixes in the list of prefixes for
+ * the timestamp have been fizzled or not */
+struct time_stamp_ds{
+    char  *time_stamp[EVENT_ID_LENGTH];
+    char *event_id[EVENT_ID_LENGTH];
+    struct aspath * ASPATH;
+    char * aspath_value[ASPATH_SIZE];
+    struct peer* received_from_peer;
+    struct update_prefix_list *upl;
+    struct update_prefix_list *saved_prefixes;
+    struct attr * attr_value;
+    bool processed_value;
+    struct time_stamp_ds * next;
+
 };
 
+/* a list of timestamps  */
+struct list_of_time_stamps{
+    char * time_stamp_id[TIME_STAMP_LENGTH];
+    char * event_id[EVENT_ID_LENGTH];
+    struct peer * sent_to_peer;
+    struct list_of_time_stamps * next;
+};
+
+/* a time stamp can be the cause of more than one time stamp */
+struct caused_time_stamps{
+    char time_stamp[TIME_STAMP_LENGTH];
+    char event_id[EVENT_ID_LENGTH];
+    struct list_of_time_stamps* generated_time_stamps;
+    struct peer_list_for_sending* peer_list_for_sending_value;
+    struct caused_time_stamps * next;
+
+};
 /* this data strucure is used for tracking the sent timestamps */
 struct sent{
-    struct  list_of_time_stamp lts;
     char time_stamp[TIME_STAMP_LENGTH];
     char event_id[EVENT_ID_LENGTH];
     struct peer * sent_to_peer;
+    struct list_of_time_stamps* generated_time_stamps;
     struct sent * next;
 };
+
 
 
 /* ************************ CIRCA system data structure defintion ends here */
 
 /* ************************ CIRCA system function defintion starts here */
-extern char *  delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,struct aspath * ASPATH,char passed_event_id[],char passed_time_stamp[]);
-extern void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl);
-extern void print_time_stamp(struct time_stamp_ds ** head_ref);
 extern void print_update_prefix_list(struct update_prefix_list ** head_ref);
-extern void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct aspath ASPATH);
+extern void print_time_stamp(struct time_stamp_ds ** head_ref);
+extern void print_caused_time_stamp_ds(struct caused_time_stamps ** head_ref);
+extern void print_peer_list(struct peer_list ** head_ref);
+extern void print_neighbours_we_have_sent_event(struct neighbours_sent_to ** head_ref);
+
+// extern void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct prefix * prefix_struct);
+// //extern void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char * in_time_stamp_id,long AS_owner_id,struct update_prefix_list* pl,struct peer * received_from_peer,char * ASPATH_value,struct in_addr next_hop,struct attr * attr);
+// extern bool check_if_we_have_received_prefix(struct time_stamp_ds** head_ref,char * in_prefix);
+// extern bool check_if_we_have_processed_prefix(struct time_stamp_ds** head_ref,char * in_prefix);
+// // extern struct time_stamp_ds * get_time_stamp_event_id_of_prefix(struct time_stamp_ds ** head_ref,char * in_prefix,int as_number);
+// extern void set_prefix_processed(struct time_stamp_ds** head_ref,char * in_prefix,char * time_stamp,char * event_id;char * aspath_value);
+// extern struct time_stamp_ds * delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,char passed_event_id[],char passed_time_stamp[]);
+// extern void set_time_stamp_processed(struct time_stamp_ds** head_ref,char * time_stamp,char * event_id);
+// extern void add_to_peer_list_for_sending(struct peer_list_for_sending ** head_ref,struct peer * in_peer);
+// extern struct caused_time_stamps * get_generated_time_stamps_sent_to(struct caused_time_stamps** head_ref, char *in_time_stamp);
+// extern struct peer_list_for_sending * get_list_of_peers_to_sent_to(struct caused_time_stamps** head_ref, char *in_time_stamp);
+// extern void add_to_generated_time_stamp_list(struct caused_time_stamps** head_ref,char * in_event_id,char *in_time_stamp,struct list_of_time_stamps * in_list_of_time_stamps,struct peer_list_for_sending * in_peer_list_for_sending);
+// extern bool check_if_sent_is_empty_second_version(struct caused_time_stamps** head_ref,char *event_id);
+// extern bool check_if_we_have_added_this_peer(struct caused_time_stamps** head_ref,struct peer * peer);
+extern void addcause(struct cause** head_ref,char *be_sending_time_stamp,char *causality,char *in_event_id,struct peer * peer); /* Done */
+// extern void insert_in_converged(struct converged ** head_ref, char * in_event_id);
+// extern void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,char *in_event_id,struct peer_list * in_peer_list); /* Done */
+// extern struct neighbours_sent_to * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
+// extern void remove_neighbours_event_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
+// extern void delete_time_stamp_from_generated_time_stamps(struct caused_time_stamps** head_ref,char * passed_event_id,char *passed_time_stamp);
+// extern struct cause * getcause(struct cause** head_ref,char * received_time_stamp,char *in_event_id);/* Done */
+// extern int get_converged_value(struct converged ** head_ref, char * in_event_id);
+// extern void set_converged_value_true(struct converged ** head_ref, char * in_event_id);
+// extern int  get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,long AS_number,char passed_event_id[],char passed_time_stamp[]);
 
 
-extern bool check_if_sent_is_empty(struct sent** head_ref,char *event_id); /* allmost Done! */
-extern void delete_from_sent(struct sent** head_ref,char *received_time_stamp,char *event_id);
-extern void add_to_sent(struct sent** head_ref, char *in_time_stamp, char * event_id,struct peer* in_neighbour); /* Done */
-
-extern struct cause * getcause(struct cause** head_ref,char * time_stamp_id,char *event_id);/* Done */
-extern void addcause(struct cause** head_ref,char *time_stamp,char *causality,char *event_id,struct peer * peer); /* Done */
-
-extern void add_to_neighbours_sent_to_of_an_event(struct neighbours_sent_to** head_ref,char *event_id,struct peer_list* in_peer_list); /* Done */
-extern struct peer_list get_peer_list(struct peer_list** head_ref,char *event_id);/* Doen */
-extern struct peer_list add_peer_to_list(struct sent** head_ref,struct peer_list* in_peer_list,struct peer *peer); /* Done */
-
-extern void insert_in_converged(struct converged ** head_ref, char * in_event_id);
-extern void set_converged_yet_true(struct converged ** head_ref, char * in_event_id);
-extern int get_converged_yet_value(struct converged ** head_ref, char * in_event_id);
 
 
-extern bool check_if_we_have_triggered_DCD(char *prefix,struct peer * peer,struct aspath  ASPATH);
-extern void get_event_id(struct event** head_ref,char *prefix,long AS,struct aspath ASPath,char event_id,char causality);
-extern bool check_if_we_are_the_owner_of_event(char *event_id);
-
-extern void send_back_fizzle(struct peer *peer,char *cause_of_time_stamp, char *event_id);
-extern void dessimination_phase(char *event_id);
-extern void send_convergence_message(struct peer *peer,char * event_id);
-extern void received_fizzle(struct peer *peer);
-extern void received_convergence(struct peer *peer);
+// extern struct neighbours_sent_to * get_peers_to_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
+// extern struct neighbours_sent_to * get_neighbours_sent_to(struct neighbours_sent_to** head_ref, char *in_event_id);
 
 
 
+
+
+// extern struct time_stamp_ds * get_time_stamp(struct time_stamp_ds ** head_ref,int as_number);
+// extern void add_to_sent(struct sent** head_ref, char * in_time_stamp, char * event_id,struct peer * sent_to_peer); /* Done */
+// extern void delete_from_sent(struct sent** head_ref,char *received_time_stamp,char *in_event_id);
+
+// extern void add_to_peer_list(struct peer_list ** head_ref,struct peer * in_peer);
+extern long  str_split(char* a_str, const char a_delim,int asked_section);
 /*
 ************************ CIRCA system function defintion ends here
 */
@@ -777,20 +818,21 @@ struct bgp_nlri
 #define CIRCA_HEADER_SIZE                   19
 
 
-#define CIRCA_MSG_MIN_SIZE                      (CIRCA_HEADER_SIZE + 4)
-
-/* CIRCA message types.  */
-#define CIRCA_MSG_FIZZLE                        40
-#define CIRCA_MSG_CONVERGENCE                   41
-#define CIRCA_MSG_FIB_ENTRY                     42
 
 
 /* CIRCA message sub types.  */
-#define CIRCA_MSG                               63
+#define CIRCA_MSG_UPDATE                        63
 #define LINK_UP                                 64
 #define LINK_DOWN                               65
 #define NEW_POLICY                              66
 #define NEW_PREFIX                              67
+#define CIRCA_MSG_FIZZLE                        68
+#define CIRCA_MSG_DISSEMINATION                 69
+#define CIRCA_MSG_GRC                           70
+#define CIRCA_MSG_FIB_ENTRY                     71
+
+#define CIRCA_MSG_MIN_SIZE                      (CIRCA_HEADER_SIZE + 4)
+
 
 
 /* BGP open optional parameter.  */
@@ -918,7 +960,7 @@ struct bgp_nlri
 #define BGP_INIT_START_TIMER                     1
 #define BGP_DEFAULT_HOLDTIME                   180
 #define BGP_DEFAULT_KEEPALIVE                   60 
-#define BGP_DEFAULT_EBGP_ROUTEADV                3
+#define BGP_DEFAULT_EBGP_ROUTEADV                1
 #define BGP_DEFAULT_IBGP_ROUTEADV                1
 #define BGP_DEFAULT_CONNECT_RETRY                5
 
