@@ -140,7 +140,7 @@ void concat_long_values(long section1,long section2,char * str,int size)
 
 
 
-void generate_global_event_id(long router_id,char * root_cause_event_id)
+void generate_global_event_id(int router_id,char root_cause_event_id[])
 {
     //concat_long_values(sequence_number,router_id,&global_event_id);
     zlog_debug("++++++++++++++++++++++++++++++++++++++++++we are generating a new global event id ++++++++++++++++++++++++++++++++++");
@@ -220,13 +220,48 @@ long  str_split(char a_str[], const char a_delim,int asked_section)
             
             free(*(result + i));
         }
-        
         free(result);
     }
 
 
     //return result;
 }
+
+
+/* this function return a list of time stamps for the passed prefix extecp the passed time stamp and also converged one */
+
+struct time_stamp_ds * get_list_of_unfizzled_time_stamps(struct time_stamp_ds** head_ref,char * prefix,char * in_time_stamp,char * in_event_id,struct peer * received_from_peer)
+{
+    zlog_debug("*********** we are in get_list_of_unfizzled_time_stamps ");
+    struct time_stamp_ds* result = NULL;
+
+    struct time_stamp_ds * temp = (*head_ref);
+    while(temp != NULL)
+    {
+        zlog_debug("*********** for  %s and %s we are going to check",temp->time_stamp,temp->event_id);
+        if(strcmp(temp->time_stamp,in_time_stamp)!=0 && strcmp(temp->event_id,in_event_id)==0)
+        {
+         if(get_converged_value(&converged_head, temp->event_id)!=1)
+         {
+            zlog_debug("*********** now we need to check prefixe list ");
+        struct update_prefix_list * my_temp = temp -> upl ;
+        while(my_temp != NULL)
+        {
+            zlog_debug("*********** and going to compare  %s with prefix %s  in getting unfizzled time stamp********** ",my_temp -> prefix,prefix);
+            if(strcmp (my_temp -> prefix,prefix)==0)
+            {
+                add_new_time_stamp(&result,temp->event_id,temp->time_stamp,temp->received_from_peer->as,NULL,temp->received_from_peer,NULL,"aspath");
+            }
+            my_temp = my_temp -> next;
+        }
+    }
+    }
+        temp = temp -> next;
+    }
+    return result;
+
+}
+
 
 /* we use this function to get the list of time stamps the passed time stamp cause them */
 
@@ -236,7 +271,7 @@ struct list_of_time_stamps * get_list_of_genereted_for_time_stamp(struct caused_
     struct caused_time_stamps * result = NULL;
     while(temp != NULL){
         // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
-        if(strcmp (temp -> time_stamp,in_time_stamp)==0){
+        if(strcmp (temp -> time_stamp,in_time_stamp)==0 && get_converged_value(&converged_head,in_event_id)!=1){
             result = temp;
             break;
         }else{
@@ -256,7 +291,7 @@ struct caused_time_stamps * get_time_stamp_ds(struct caused_time_stamps** head_r
     struct caused_time_stamps * result = NULL;
     while(temp != NULL){
         // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
-        if(strcmp (temp -> time_stamp,in_time_stamp)==0 && strcmp(temp->event_id,in_event_id)==0){
+        if(strcmp (temp -> time_stamp,in_time_stamp)==0 && strcmp(temp->event_id,in_event_id)==0 && get_converged_value(&converged_head,in_event_id)!=1){
             result = temp;
             break;
         }else{
@@ -299,32 +334,15 @@ bool check_if_peer_exist_in_list(struct peer_list_for_sending ** head_ref,struct
 
 }
 
-/* we will set the value of caused_time_stamps data structure to NULL for the passed time stamp. We do this when we want to add a new data to the list */
-void set_caused_time_stamps_for_a_time_stamp_null(struct caused_time_stamps** head_ref,char * time_stamp, char *in_event_id){
-    struct caused_time_stamps * temp = (*head_ref);
-    struct caused_time_stamps * result = NULL;
-    while(temp != NULL){
-       // zlog_debug("we are going to compare %s and %s to get the peer list",temp -> key_prefix,in_prefix );
-        if(strcmp (temp -> event_id,in_event_id)==0 && strcmp (temp -> time_stamp,time_stamp)==0){
-            *head_ref = temp->next;   // Changed head
-            free(temp);               // free old head
-            //zlog_debug("successfully removed all neighbors of prefix %s",in_prefix);
-            return;
-            break;
-        }else{
-            temp = temp -> next;
-        }
-    }
-    return;
-}
 
 
 /* we add a new time stamp with all of the time stamoes which it is their cause */
-void add_to_generated_time_stamp_list(struct caused_time_stamps** head_ref,char * in_event_id,char *in_time_stamp,struct list_of_time_stamps * in_list_of_time_stamps,struct peer_list_for_sending * in_peer_list_for_sending) /* Done */
+void add_to_generated_time_stamp_list(struct caused_time_stamps** head_ref,char * in_event_id,char *in_time_stamp,struct list_of_time_stamps * in_list_of_time_stamps,struct peer_list_for_sending * in_peer_list_for_sending,struct peer * received_from_peer) /* Done */
 {
     struct caused_time_stamps * new_node3 = (struct caused_time_stamps *) malloc(sizeof(struct caused_time_stamps));
     strncpy(new_node3 -> event_id, in_event_id, EVENT_ID_LENGTH);
     strncpy(new_node3 -> time_stamp, in_time_stamp, TIME_STAMP_LENGTH);
+    new_node3->received_from_peer = received_from_peer;
     new_node3 -> generated_time_stamps = in_list_of_time_stamps;
     new_node3->peer_list_for_sending_value = in_peer_list_for_sending;
     new_node3 -> next = (*head_ref);
@@ -413,13 +431,15 @@ void generate_time_stamp(char passed_time_stamp[],char * router_id)
 {
     struct timeval start;
     char * char_my_router_id[TIME_STAMP_LENGTH];
-    long mtime, seconds, to_be_sent_time_stamp;
+    long mtime, seconds, to_be_sent_time_stamp_sec;
     gettimeofday(&start, NULL);
-    to_be_sent_time_stamp = start.tv_usec;
-    zlog_debug("\n time in microseconds .... %ld \n",to_be_sent_time_stamp);
-    sprintf(passed_time_stamp, "%u", to_be_sent_time_stamp);
+    to_be_sent_time_stamp_sec = start.tv_usec;
+    zlog_debug("\n time in microseconds .... %ld \n",to_be_sent_time_stamp_sec);
+    sprintf(passed_time_stamp, "%u", to_be_sent_time_stamp_sec);
     strcat(passed_time_stamp, ",");
+
     strcat(passed_time_stamp, router_id);
+    zlog_debug(" our time stamp is %s ",passed_time_stamp);
 }
 
 void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix,struct  prefix * prefix_struct)
@@ -432,22 +452,25 @@ void add_prefix_to_prefix_list(struct update_prefix_list** head_ref,char *prefix
     (*head_ref) = new_node;
 }
 
+
+
 void print_update_prefix_list(struct update_prefix_list ** head_ref)
 {
     struct update_prefix_list * temp = (*head_ref);
     while(temp != NULL)
     {
-        zlog_debug ("+++++++++++++++++++++++++++++++++ This is the prefix (%s) to ++++++++++++++++++++",temp -> prefix);
+        zlog_debug ("+++++++++++++++++++++++++++++++++ This is the prefix (%s) ++++++++++++++++++++",temp -> prefix);
         temp = temp -> next;
     }
 }
 
 void print_time_stamp(struct time_stamp_ds ** head_ref)
 {
+    zlog_debug ("+++++++++++++++++++++++++++++++++ we are printing time_stamp data structure values++++++++++++++++++++");
     struct time_stamp_ds * temp = (*head_ref);
     while(temp != NULL)
     {
-        zlog_debug("this is the event id %s \n", temp -> event_id);
+        zlog_debug("this is time stamp %s and  event id %s received from %s \n", temp->time_stamp,temp -> event_id,temp->received_from_peer->host);
         zlog_debug("this is the aspath value %s \n", temp->aspath_value);
         struct update_prefix_list * my_temp = temp -> upl ;
         zlog_debug("********** going to print the prefix list ******** \n");
@@ -466,7 +489,7 @@ void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char 
 
 
     zlog_debug("*********** going to add new time stamp in time stamp   ********** ");
-        zlog_debug("*********** going to add %s as aspathvalue   ********** ",aspath_value);
+    zlog_debug("*********** going to add %s as aspathvalue   ********** ",aspath_value);
 
     struct time_stamp_ds * new_node = (struct time_stamp_ds*) malloc(sizeof(struct time_stamp_ds));
     strncpy(new_node -> event_id ,in_event_id, EVENT_ID_LENGTH);
@@ -482,42 +505,53 @@ void add_new_time_stamp(struct time_stamp_ds** head_ref,char * in_event_id,char 
 
 }
 
-bool delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,char passed_event_id[],char passed_time_stamp[])
+/* we check if the list of prefixes for a time stamp and evend id is empty */
+bool check_if_update_prefix_list_is_empty(struct time_stamp_ds** head_ref,char * prefix_event_id,char * prefix_time_stamp , struct peer * sender_peer)
 {
 
-     zlog_debug("we are goint to delete and then check list for  prefix %s",in_prefix);
+    zlog_debug("we are goint to check if we the list of prefixes for  %s and %s is empty or not ",prefix_event_id,prefix_time_stamp);
+    struct time_stamp_ds * ts_temp = (*head_ref);
+    while(ts_temp != NULL)
+    {
+        printf("this is the event id %s \n", ts_temp -> event_id);
+        if(strcmp(ts_temp->received_from_peer->host,sender_peer->host)==0 && strcmp(ts_temp->time_stamp,prefix_time_stamp)==0 && strcmp(ts_temp->event_id,prefix_event_id)==0)
+        {
+        struct update_prefix_list * my_temp = ts_temp -> upl ;
+        if(my_temp==NULL)
+            return true;
+        else
+            return false;
+    }
+     ts_temp = ts_temp -> next;
+    }
 
+    return true;
+}
+
+/* we remove one of the prefixes from the list of prefixes for a time stamp */
+void delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char * in_prefix,struct peer * sender_peer,char * in_event_id,char * in_time_stamp)
+{
+     zlog_debug("we are goint to delete and then check list for  prefix %s",in_prefix);
 
     struct time_stamp_ds * ts_temp = (*head_ref);
     while(ts_temp != NULL)
     {
-        //printf("this is the event id %s \n", ts_temp -> event_id);
+        printf("this is the event id %s \n", ts_temp -> event_id);
+        if(strcmp(ts_temp->received_from_peer->host,sender_peer->host)==0 && strcmp(ts_temp->time_stamp,in_time_stamp)==0 && strcmp(ts_temp->event_id,in_event_id)==0)
+        {
         struct update_prefix_list * my_temp = ts_temp -> upl ;
 
         // Store head node
         struct update_prefix_list* temp = ts_temp -> upl, *prev;
-        zlog_debug("we are goint to compare passed %s and in prefix %s",temp->prefix,in_prefix);
 
         // If head node itself holds the key to be deleted
         if (temp != NULL && strcmp(temp->prefix, in_prefix)==0)
         {
             ts_temp -> upl = temp->next;   // Changed head
             free(temp);               // free old head
-            if (ts_temp -> upl==NULL)
-            {
-                zlog_debug("it seems the prefix list is empty lets return the time stamp");
-                return true;
-
-            }
-            else
-            {
-                zlog_debug("it seems the prefix list is not empty lets return false");
-                return false;
-            }
+            return;
 
         }
-
-        zlog_debug("we are in the next steps in deleting process");
 
         // Search for the key to be deleted, keep track of the
         // previous node as we need to change 'prev->next'
@@ -528,30 +562,34 @@ bool delete_prefix_from_update_prefix_list(struct time_stamp_ds** head_ref,char 
         }
 
         // If key was not present in linked list
-        if (temp == NULL) return true;
+        if (temp == NULL) return;
 
         // Unlink the node from linked list
         prev->next = temp->next;
 
         free(temp);  // Free memory
         if(prev->next ==NULL)
-            return true;
-        else
-            return ts_temp;
+            return;
+    }
         ts_temp = ts_temp -> next;
 
     }
-    return true;
+    return;
 
 }
 
 
-int get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,int received_from_peer_as,char passed_event_id[],char passed_time_stamp[])
+int get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,int received_from_peer_as,char * passed_event_id,char passed_time_stamp[])
 {
     struct time_stamp_ds * temp = (*head_ref);
+    bool checking_as_required = true;
+    if(received_from_peer_as == 0)
+        checking_as_required = false;
     while(temp != NULL)
     {
-        if((temp->received_from_peer->as==received_from_peer_as))
+        if((temp->received_from_peer->as==received_from_peer_as)|| !checking_as_required)
+        {
+        if(get_converged_value(&converged_head,passed_event_id)!=1)
         {
         struct update_prefix_list * my_temp = temp -> upl ;
         while(my_temp != NULL)
@@ -564,6 +602,7 @@ int get_event_id_time_stamp(struct time_stamp_ds** head_ref,char * in_prefix,int
             }
             my_temp = my_temp -> next;
         }
+    }
     }
         temp = temp -> next;
     }
@@ -652,23 +691,30 @@ bool check_if_we_have_received_prefix(struct time_stamp_ds** head_ref,char * in_
 
     zlog_debug("*********** going to check if we have received prefix %s with aspath %s or not ********** ",in_prefix,aspath_value);
     struct time_stamp_ds * temp = (*head_ref);
+    bool checking_as_required = true;
     while(temp != NULL)
     {
         char * aspath_in_ds[PREFIX_LENGTH];
-        zlog_debug("*********** going to compare  %s with aspath %s  ********** ",temp->aspath_value,aspath_value);
-        zlog_debug("*********** and going to compare  %ld with peer %ld  ********** ",temp->received_from_peer->as,received_from_peer_as);
-        
-        if((strcmp(temp->aspath_value,aspath_value)==0) && (temp->received_from_peer->as==received_from_peer_as))
+        zlog_debug("*********** for the received time stamp %s and event id %s we have:",temp->time_stamp,temp->event_id);
+        zlog_debug("*********** going to compare  %s with passed aspath %s  ********** ",temp->aspath_value,aspath_value);
+        zlog_debug("*********** and going to compare  %ld with passed  peer %ld  ********** ",temp->received_from_peer->as,received_from_peer_as);
+        if(strcmp(aspath_value,"withdraw")==0)
+            checking_as_required = false;
+
+        if((strcmp(temp->aspath_value,aspath_value)==0) && ( !checking_as_required ||temp->received_from_peer->as==received_from_peer_as))
         {
          zlog_debug("*********** now we need to compare prefixes ");
-
-        struct update_prefix_list * my_temp = temp -> upl ;
+        struct update_prefix_list * my_temp = (temp -> upl) ;
         while(my_temp != NULL)
         {
             zlog_debug("*********** and going to compare  %s with prefix %s  ********** ",my_temp -> prefix,in_prefix);
             if(strcmp (my_temp -> prefix,in_prefix)==0)
             {
                 return true;
+                // if(get_converged_value(&converged_head, temp->event_id)==0)
+                //     return true;
+                // else
+                //     return false;
             }
             my_temp = my_temp -> next;
         }
@@ -844,6 +890,23 @@ struct time_stamp_ds * get_time_stamp(struct time_stamp_ds ** head_ref,int as_nu
     return result;
 }
 
+
+void printcause(struct cause** head_ref)/* Done */
+{
+    struct cause* temp = (*head_ref);
+    zlog_debug("lets print cause data structure");
+
+    while(temp != NULL){
+        zlog_debug("these are received %s  and then sent time stamp %s in cause data structure",temp -> received_timestamp, temp -> sending_timestamp);
+
+           // zlog_debug("not equal lets move");
+            temp = temp-> next;
+
+
+    }
+}
+
+
 struct cause * getcause(struct cause** head_ref,char * received_time_stamp,char *in_event_id)/* Done */
 {
     struct cause* temp = (*head_ref);
@@ -876,6 +939,15 @@ void addcause(struct cause** head_ref,char *be_sending_time_stamp,char *causalit
 
 }
 
+void print_converged_ds(struct converged ** head_ref){
+    struct converged* temp = (*head_ref);
+    while(temp != NULL){
+        
+    zlog_debug("the event id %s value is %ld ",temp->event_id,temp->converged_value);
+            temp = temp -> next;
+    }
+
+}
 
 void insert_in_converged(struct converged ** head_ref, char * in_event_id){
     struct converged* temp = (*head_ref);
@@ -1018,8 +1090,48 @@ struct peer_list_for_sending* get_un_processed_peers(struct peer_list_for_sendin
 }
 
 
-struct list_of_time_stamps*  generate_time_stamp_for_list_of_peers(struct peer_list_for_sending ** head_ref,char *caused_time_stamp,char * root_cause_event_id,struct peer_list_for_sending ** already_sent_list){
+struct  peer * get_head(struct peer_list_for_sending **head)
+{
+    struct peer_list_for_sending *temp = *head;
+    return temp->peer;
+}
+
+
+struct peer_list_for_sending * deletepeer(struct peer_list_for_sending **head,struct peer * target_peer)
+{
+
+    struct peer_list* temp =*head, *prev;
+    if (temp != NULL && (strcmp(temp->peer->host,target_peer->host)==0))
+    {
+        temp = temp->next;   // Changed head
+                       // free old head
+        return temp;
+    }
+
+    // Search for the key to be deleted, keep track of the
+    // previous node as we need to change 'prev->next'
+    while (temp != NULL && (strcmp(temp->peer->host,target_peer->host)!=0))
+    {
+        prev = temp;
+        temp = temp->next;
+    }
+
+    // If key was not present in linked list
+    if (temp == NULL) return NULL;
+
+    // Unlink the node from linked list
+    prev->next = temp->next;
+
+    free(temp);  // Free memory
+    if(prev->next ==NULL)
+        return NULL;
+}
+
+
+struct list_of_time_stamps*  generate_time_stamp_for_list_of_peers(struct peer_list_for_sending ** head_ref,char *caused_time_stamp,char * root_cause_event_id,struct peer_list_for_sending ** already_sent_list,struct peer * received_from_peer){
     
+    struct peer_list_for_sending * temp = (*head_ref);
+
     if(already_sent_list==NULL)
     {
         struct peer_list_for_sending * temp = (*head_ref);
@@ -1031,16 +1143,20 @@ struct list_of_time_stamps*  generate_time_stamp_for_list_of_peers(struct peer_l
             sprintf(router_id, "%u", temp->peer->local_as);
             /* lets generate a new unique time stamp */
             generate_time_stamp(&to_be_sent_time_stamp,router_id);
-            zlog_debug("we generated %s ",to_be_sent_time_stamp);
+            //zlog_debug("we generated %s ",to_be_sent_time_stamp);
             zlog_debug("we are adding time stamp ");
-            add_to_time_stamp_list(&(time_stamp_list),  to_be_sent_time_stamp);
-            addcause(&cause_head,to_be_sent_time_stamp,caused_time_stamp,root_cause_event_id,temp->peer);
+            //struct peer * to_be_sent_peer = NULL;
+            //to_be_sent_peer = get_head(&peer_list_for_sending_head);
+
+            zlog_debug("we picked target peer  %s for sending this time stamp %s to it !\n",temp->peer->host,to_be_sent_time_stamp);
+            //peer_list_for_sending_head = deletepeer(&peer_list_for_sending_head,temp->peer);
+            add_to_time_stamp_list(&(time_stamp_list),  to_be_sent_time_stamp,root_cause_event_id,temp->peer);
+            addcause(&cause_head,to_be_sent_time_stamp,caused_time_stamp,root_cause_event_id,received_from_peer);
             zlog_debug("we added ");
             temp = temp -> next;
         }
-
+        //peer_list_for_sending_head = (*head_ref);
         return time_stamp_list;
-
     }
     else
     {
@@ -1137,11 +1253,13 @@ struct neighbours_sent_to * get_neighbours_sent_to(struct neighbours_sent_to** h
     return result;
 }
 
-void add_to_time_stamp_list(struct list_of_time_stamps ** head_ref,char * in_time_stamp){
+void add_to_time_stamp_list(struct list_of_time_stamps ** head_ref,char * in_time_stamp,char * in_event_id,struct peer * to_be_sent_peer){
     
     zlog_debug("******* we are going to add this time stamp %s  ******** ",in_time_stamp);
     struct list_of_time_stamps* new_node4 = (struct list_of_time_stamps *)malloc(sizeof(struct list_of_time_stamps));
     strncpy(new_node4->time_stamp_id,in_time_stamp,TIME_STAMP_LENGTH);
+    strncpy(new_node4->event_id,in_event_id,EVENT_ID_LENGTH);
+    new_node4->send_to_peer =to_be_sent_peer;
     new_node4 -> next = (*head_ref);
     (*head_ref) = new_node4;
 zlog_debug("******* we added this time stamp %s  ******** ",in_time_stamp);

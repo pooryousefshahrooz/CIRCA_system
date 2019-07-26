@@ -122,11 +122,12 @@ struct time_stamp_ds{
 
 };
 
+
 /* a list of timestamps  */
 struct list_of_time_stamps{
     char * time_stamp_id[TIME_STAMP_LENGTH];
     char * event_id[EVENT_ID_LENGTH];
-    struct peer * sent_to_peer;
+    struct peer * send_to_peer;
     struct list_of_time_stamps * next;
 };
 
@@ -134,6 +135,7 @@ struct list_of_time_stamps{
 struct caused_time_stamps{
     char time_stamp[TIME_STAMP_LENGTH];
     char event_id[EVENT_ID_LENGTH];
+    struct peer * received_from_peer;
     struct list_of_time_stamps* generated_time_stamps;
     struct peer_list_for_sending* peer_list_for_sending_value;
     struct caused_time_stamps * next;

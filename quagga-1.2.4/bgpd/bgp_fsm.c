@@ -482,12 +482,12 @@ bgp_stop (struct peer *peer)
       {
   zlog_info ("%%ADJCHANGE: neighbor %s Down %s", peer->host,
                    peer_down_str [(int) peer->last_reset]);
-      time_stamp_ds_head = NULL;
-      prefix_list_head = NULL;
-      sent_head = NULL;
-      cause_head = NULL;
-      converged_head = NULL;
-      neighbours_sent_to_head = NULL;
+      // time_stamp_ds_head = NULL;
+      // prefix_list_head = NULL;
+      // sent_head = NULL;
+      // cause_head = NULL;
+      // converged_head = NULL;
+      // neighbours_sent_to_head = NULL;
       //peer_list_for_sending_head = NULL;
       //caused_time_stamps_head = NULL;
 
@@ -932,12 +932,12 @@ bgp_establish (struct peer *peer)
   if (bgp_flag_check (peer->bgp, BGP_FLAG_LOG_NEIGHBOR_CHANGES))
     zlog_info ("%%ADJCHANGE: neighbor %s Up", peer->host);
   
-      time_stamp_ds_head = NULL;
-      prefix_list_head = NULL;
-      sent_head = NULL;
-      cause_head = NULL;
-      converged_head = NULL;
-      neighbours_sent_to_head = NULL;
+      // time_stamp_ds_head = NULL;
+      // prefix_list_head = NULL;
+      // sent_head = NULL;
+      // cause_head = NULL;
+      // converged_head = NULL;
+      // neighbours_sent_to_head = NULL;
       //peer_list_for_sending_head = NULL;
       //caused_time_stamps_head = NULL;
       /*  here we will send our grc link down message to our avatar */

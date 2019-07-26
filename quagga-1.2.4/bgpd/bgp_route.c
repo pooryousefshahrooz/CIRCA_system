@@ -1599,9 +1599,39 @@ struct bgp_process_queue
 };
 
 
-void send_back_to_received_and_fizzled()
+void send_back_to_received_time_stamps(char * prefix, char * time_stamp, char * event_id, struct peer * received_from_peer)
 {
+  zlog_debug ("we are going to first delate and then if empty send back fizzle to the list of timestamp except %s %s  *******************************",event_id,time_stamp);
+  struct time_stamp_ds * list_of_time_stamps_instance = (struct time_stamp_ds *) malloc (sizeof(struct time_stamp_ds));
+  zlog_debug ("these are the events we have ");
+  print_converged_ds(&converged_head);
+  list_of_time_stamps_instance =  get_list_of_unfizzled_time_stamps(&time_stamp_ds_head,prefix,time_stamp,event_id,received_from_peer);
+  if(list_of_time_stamps_instance)
+  {
+    while(list_of_time_stamps_instance != NULL)
+    {
+        print_time_stamp(&time_stamp_ds_head);
+        zlog_debug("******************************* lets delete prefix from list of event id and time stamp %s  %s  ******************************* \n", list_of_time_stamps_instance -> event_id,list_of_time_stamps_instance->time_stamp);
+          
+        delete_prefix_from_update_prefix_list(&time_stamp_ds_head,prefix,list_of_time_stamps_instance->received_from_peer,list_of_time_stamps_instance -> event_id,list_of_time_stamps_instance->time_stamp);
+        if (check_if_update_prefix_list_is_empty(&time_stamp_ds_head,list_of_time_stamps_instance -> event_id,list_of_time_stamps_instance->time_stamp,list_of_time_stamps_instance->received_from_peer))
+         {
+          print_time_stamp(&time_stamp_ds_head);
+          //zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle to %s ",prefix,our_time_stamp_ds->received_from_peer->host,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
+          zlog_debug("******************************* the update packet which prefix %s is belong to it has fizzled lets send back fizzle *******************************",prefix);
+          circa_fizzle_send (list_of_time_stamps_instance->received_from_peer,list_of_time_stamps_instance->event_id,list_of_time_stamps_instance->time_stamp);
+         }
+         else
+         {
+          zlog_debug(" ******************************* the update packet which prefix %s is belong to it has not fizzled *******************************  ",prefix);
+         } 
+        list_of_time_stamps_instance = list_of_time_stamps_instance -> next;
+    }
+  }
+  else
+  zlog_debug ("*******************************it seems we have not received prefix %s from any other peers other that %s!*******************************",prefix,received_from_peer->host);
 
+  zlog_debug ("*******************************we deleted and sent back fizzle(if empty) to all fizzled time stamps for prefix %s *******************************",prefix);
 
 return;
 
@@ -1688,18 +1718,21 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
     char * prefix_time_stamp[TIME_STAMP_LENGTH];
     char * prefix_event_id[EVENT_ID_LENGTH];
     char * to_be_sent_time_stamp[TIME_STAMP_LENGTH];
+    bool we_got_time_stamp_for_prefix = false;
     if (sender_peer)
     {
     zlog_debug ("************************************* 3 prefix %s from %s did not fizzled!!!!",prefix_value,sender_peer->host);
-    print_sending_list(&peer_list_for_sending_head);
-    print_caused_time_stamp_ds(&caused_time_stamps_head);
+   
+    print_time_stamp(&time_stamp_ds_head);
     if(check_if_we_have_received_prefix(&time_stamp_ds_head,prefix_value,sender_peer->as,aspath_str_value))
         {
           zlog_debug ("*************we have received this prefix from %s ***********\n",sender_peer->host);
           int ret;
+          print_time_stamp(&time_stamp_ds_head);
            ret = get_event_id_time_stamp(&time_stamp_ds_head,prefix_value,sender_peer->as,&prefix_event_id,&prefix_time_stamp);
            if (ret >0)
            {
+                we_got_time_stamp_for_prefix  = true;
                 struct list_of_time_stamps* time_stamp_list = NULL;
                 struct peer_list_for_sending * peers_list = &peer_list_for_sending_head;
 
@@ -1718,7 +1751,7 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
                 {
                     zlog_debug("it seems we have added some time stamps for this time stamp %s before ",prefix_time_stamp);
                     print_caused_time_stamp_ds(&caused_time_stamps_head);
-                    zlog_debug("done it seems we have added some time stamps for this time stamp %s before ",prefix_time_stamp);
+                    zlog_debug("after printing it seems we have added some time stamps for this time stamp %s before ",prefix_time_stamp);
                     zlog_debug("we have these processed peers ");
                     struct peer_list_for_sending * unprocessed_peers_list = NULL;
                     struct peer_list_for_sending * processed_peers_list = caused_time_stamps_instance -> peer_list_for_sending_value;
@@ -1727,16 +1760,19 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
                     unprocessed_peers_list = get_un_processed_peers(&processed_peers_list,&peer_list_for_sending_head);
                     if(unprocessed_peers_list!=NULL)
                     {
-                      zlog_debug("we  do need to add new time stamp to the list for time stamp  %s ",prefix_time_stamp);
+                    zlog_debug("we  do need to add new time stamp to the list for time stamp  %s ",prefix_time_stamp);
+                    print_caused_time_stamp_ds(&caused_time_stamps_head);
                     struct list_of_time_stamps* generated_time_stamps_for_this_one_instance;
-                    generated_time_stamps_for_this_one_instance = generate_time_stamp_for_list_of_peers(&peer_list_for_sending_head,prefix_time_stamp,prefix_event_id,&peer_list_for_sending_head);
+                    generated_time_stamps_for_this_one_instance = generate_time_stamp_for_list_of_peers(&peer_list_for_sending_head,prefix_time_stamp,prefix_event_id,&peer_list_for_sending_head,caused_time_stamps_instance->received_from_peer);
                     zlog_debug("after time stamp generating print with real head \n");
                     print_sending_list(&peer_list_for_sending_head);
                    /* adding new time _stamp finished */
                     print_caused_time_stamp_ds(&caused_time_stamps_head);
                     zlog_debug("we are adding to the main  caused_time_stamps_head %s as a new time stamp ",prefix_time_stamp);
-                    add_to_generated_time_stamp_list(&(caused_time_stamps_head),prefix_event_id,prefix_time_stamp ,generated_time_stamps_for_this_one_instance,peer_list_for_sending_head);
+                    add_to_generated_time_stamp_list(&(caused_time_stamps_head),prefix_event_id,prefix_time_stamp ,generated_time_stamps_for_this_one_instance,peer_list_for_sending_head,caused_time_stamps_instance->received_from_peer);
                     zlog_debug("we  added to the main  caused_time_stamps_head %s as a new time stamp ",prefix_time_stamp);
+                    print_caused_time_stamp_ds(&caused_time_stamps_head);
+                    
                     }
                     else
                         zlog_debug("we  do not need to add new time stamp to the list for time stamp  %s ",prefix_time_stamp);
@@ -1746,7 +1782,7 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
               else{
                   /* this is our fisrt time we are adding a new peers we will send time stamp to them */
                 char * router_id[20];
-                zlog_debug("we got else");
+                zlog_debug("this is our fisrt time we are adding a new peers we will send time stamp to them");
                 print_sending_list(&peer_list_for_sending_head);
 
                 struct peer_list_for_sending * test = &peer_list_for_sending_head;
@@ -1758,7 +1794,7 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
                 print_sending_list(&peer_list_for_sending_head);
                 zlog_debug("after we printed  with real head");
                 struct list_of_time_stamps* generated_time_stamps_for_this_one;
-                generated_time_stamps_for_this_one = generate_time_stamp_for_list_of_peers(&peer_list_for_sending_head,prefix_time_stamp,prefix_event_id,NULL);
+                generated_time_stamps_for_this_one = generate_time_stamp_for_list_of_peers(&peer_list_for_sending_head,prefix_time_stamp,prefix_event_id,NULL,sender_peer);
                 zlog_debug("print with test");
                 print_sending_list(test);
                 zlog_debug("after time stamp generating print with real head \n");
@@ -1766,8 +1802,9 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
                /* adding new time _stamp finished */
               print_caused_time_stamp_ds(&caused_time_stamps_head);
               zlog_debug("we are adding to the main  caused_time_stamps_head %s as a new time stamp ",prefix_time_stamp);
-              add_to_generated_time_stamp_list(&(caused_time_stamps_head),prefix_event_id,prefix_time_stamp ,generated_time_stamps_for_this_one,peer_list_for_sending_head);
-              zlog_debug("we  added to the main  caused_time_stamps_head %s as a new time stamp ",prefix_time_stamp);
+              add_to_generated_time_stamp_list(&(caused_time_stamps_head),prefix_event_id,prefix_time_stamp ,generated_time_stamps_for_this_one,peer_list_for_sending_head,sender_peer);
+              zlog_debug("for first time we  added to the main  caused_time_stamps_head %s as a new time stamp ",prefix_time_stamp);
+              print_caused_time_stamp_ds(&caused_time_stamps_head);
               }
            }
            if (ret <0)
@@ -1775,32 +1812,37 @@ void prefix_advertising(char * prefix_value,char * aspath_str_value,struct peer 
                zlog_debug("We did not get anything for the received event id and time stamp for prefix are %s %s %s \n",prefix_value,prefix_event_id,prefix_time_stamp);
                 print_time_stamp(&time_stamp_ds_head);
             }
+
+        if(we_got_time_stamp_for_prefix)
+          send_back_to_received_time_stamps(prefix_value, prefix_time_stamp, prefix_event_id,sender_peer);
+        
         }
     else
     {
       zlog_debug ("*************we have not received this prefix ***********\n");
       print_time_stamp(&time_stamp_ds_head);
     }
+
+
   }
   else
-    zlog_debug ("*************there is not sender for this prefix ***********\n");
-
+    zlog_debug ("*************there is no sender for this prefix ***********\n");
 }
 
 
+/* the goal is to send back a fizzle message to the peers we have received the prefix from and they are not in our best route */
 void message_fizzling_check(char * prefix,char * aspath_str_value,struct peer * sender_peer)
 {
 
     char * prefix_time_stamp[TIME_STAMP_LENGTH];
     char * prefix_event_id[EVENT_ID_LENGTH];
-
    zlog_debug("we are at message_fizzling_check for prefix %s",prefix);
    //return;
   if (working_mode ==1)
   {
    if(sender_peer!=NULL)
    {
-    print_caused_time_stamp_ds(&caused_time_stamps_head);
+    print_time_stamp(&time_stamp_ds_head);
     if(check_if_we_have_received_prefix(&time_stamp_ds_head,prefix,sender_peer->as,aspath_str_value))
     {
       char * passed_time_stamp[TIME_STAMP_LENGTH];
@@ -1808,13 +1850,17 @@ void message_fizzling_check(char * prefix,char * aspath_str_value,struct peer * 
       struct peer * send_to_peer;
       int ret;
       zlog_debug("lets get event id time stamp %s",prefix);
+      print_time_stamp(&time_stamp_ds_head);
      ret = get_event_id_time_stamp(&time_stamp_ds_head,prefix,sender_peer->as,&prefix_event_id,&prefix_time_stamp);
      if (ret >0)
      {
          zlog_debug("the received event id and time stamp for prefix are %s %s %s \n",prefix,prefix_event_id,prefix_time_stamp);
-          
-        if (delete_prefix_from_update_prefix_list(&time_stamp_ds_head,prefix))
+          print_time_stamp(&time_stamp_ds_head);
+        delete_prefix_from_update_prefix_list(&time_stamp_ds_head,prefix,sender_peer,prefix_event_id,prefix_time_stamp);
+        print_time_stamp(&time_stamp_ds_head);
+        if (check_if_update_prefix_list_is_empty(&time_stamp_ds_head,prefix_event_id,prefix_time_stamp,sender_peer))
          {
+          print_time_stamp(&time_stamp_ds_head);
           //zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle to %s ",prefix,our_time_stamp_ds->received_from_peer->host,our_time_stamp_ds->event_id,our_time_stamp_ds->time_stamp);
           zlog_debug("________________the update packet which prefix %s is belong to it has fizzled lets send back fizzle",prefix);
           circa_fizzle_send (sender_peer,prefix_event_id,prefix_time_stamp);
@@ -1835,13 +1881,32 @@ void message_fizzling_check(char * prefix,char * aspath_str_value,struct peer * 
          
     }
     else
+    {
       zlog_debug("We have not received this prefix  %s \n",prefix);
+      print_time_stamp(&time_stamp_ds_head);
+    }
+    
 
   }
   else
+  {
     zlog_debug("there is not sender for this  prefix  %s \n",prefix);
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("we will set this prefix %s as a prefix which we do not have anypath to it %s \n",prefix);
+    zlog_debug("we have not received withdraw for it but the router we reach to this prefix trough it seems is down \n");
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("*************** ...........************* \n");
+    zlog_debug("*************** ...........************* \n");
+  }
+
 
 }
+else
+      zlog_debug("working mode is zero  \n");
+
 }
 
 static wq_item_status
@@ -1955,9 +2020,29 @@ bgp_process_main (struct work_queue *wq, void *data)
             {
                 //zlog_debug ("************************************* prefix %s from %s did fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf2, SU_ADDRSTRLEN),sender_peer->host);
                 print_sending_list(&peer_list_for_sending_head);
-                zlog_debug ("*********************1.**************** calling message_fizzling_check for  prefix %s received from %s did fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf2, SU_ADDRSTRLEN));
+                zlog_debug ("*********************1.**************** calling message_fizzling_check for  prefix %s received from %s did fizzled!!!!",prefix_value,sender_peer->host);
                 
-                message_fizzling_check(prefix_value,aspath_str_value,sender_peer);
+                if(check_if_we_have_received_prefix(&time_stamp_ds_head,prefix_value,sender_peer->as,aspath_str_value))
+                  {
+                    //shahrooz
+                    char * fizzled_time_stamp[TIME_STAMP_LENGTH];
+                    char * fizzled_event_id[EVENT_ID_LENGTH];
+
+                    int ret = get_event_id_time_stamp(&time_stamp_ds_head,prefix_value,sender_peer->as,&fizzled_event_id,&fizzled_time_stamp);
+                     if (ret >0)
+                     {
+                      struct caused_time_stamps * caused_time_stamps_instance = (struct caused_time_stamps *) malloc (sizeof(struct caused_time_stamps));
+                     caused_time_stamps_instance =  get_time_stamp_ds(&caused_time_stamps_head,fizzled_time_stamp,fizzled_event_id);
+                      if(caused_time_stamps_instance !=NULL)
+                      {
+                      zlog_debug("a new way for sending back fizzle for fizzled prefixes %s except  event id, time stamp   %s %s \n",prefix_value,fizzled_event_id,fizzled_time_stamp);
+                        send_back_to_received_time_stamps(prefix_value, fizzled_time_stamp, fizzled_event_id,caused_time_stamps_instance->received_from_peer);
+                      }
+                      else
+                        zlog_debug ("*********************2.**************** message_fizzling_check");
+                      }
+                  }
+                //message_fizzling_check(prefix_value,);
             }
           }
           return WQ_SUCCESS;
@@ -2050,9 +2135,9 @@ bgp_process_main (struct work_queue *wq, void *data)
     prefix_advertising(prefix_value,aspath_str_value,sender_peer);
     
   }
-  if(peer_list_for_sending_head==NULL)
+  else
   {
-      //zlog_debug ("************************************* prefix %s from %s did fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf2, SU_ADDRSTRLEN),sender_peer->host);
+      zlog_debug ("************************************* prefix %s from %s did fizzled!!!!",prefix_value,sender_peer->host);
       print_sending_list(&peer_list_for_sending_head);
       //zlog_debug ("******************2******************* calling message_fizzling_check for  prefix %s received from %s did fizzled!!!!",inet_ntop(p2->family, &p2->u.prefix, buf2, SU_ADDRSTRLEN),sender_peer->host);
       message_fizzling_check(prefix_value,aspath_str_value,sender_peer);
@@ -2893,7 +2978,7 @@ circa_withdraw (struct peer *peer, struct prefix *p, struct attr *attr,
        struct prefix_rd *prd, u_char *tag)
 {
 
-  zlog_debug ("**************we are in circa_withdraw **************");
+  zlog_debug ("************** we are in circa_withdraw **************");
   struct bgp *bgp;
   char buf[SU_ADDRSTRLEN];
   struct bgp_node *rn;
@@ -3167,7 +3252,12 @@ bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
 
   for (rn = bgp_table_top (table); rn; rn = bgp_route_next(rn))
    {
-    zlog_debug ("for  prefix %s  and from or to %s:",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
+    char * prefix_value[PREFIX_LENGTH];
+
+    concat_prefix_length(inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),rn->p.prefixlen,prefix_value,PREFIX_LENGTH);
+    zlog_debug ("for  prefix %s  and from or to %s:",prefix_value,peer->host);
+
+
     for (ri = rn->info; ri; ri = ri->next)
       if (CHECK_FLAG (ri->flags, BGP_INFO_SELECTED) && ri->peer != peer)
 	{
@@ -3176,13 +3266,24 @@ bgp_announce_table (struct peer *peer, afi_t afi, safi_t safi,
               : (bgp_announce_check (ri, peer, &rn->p, &attr, afi, safi)))
       {
         //inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN)
-      zlog_debug ("bgp_announce_table: we will send prefix %s  to %s",inet_ntop((&rn->p)->family, &(&rn->p)->u.prefix, buf, SU_ADDRSTRLEN),peer->host);
-
+      zlog_debug ("bgp_announce_table: we will send prefix %s  to %s",prefix_value,peer->host);
+      //add_to_for_sending_list(&peer_list_for_sending_head,peer);
       bgp_adj_out_set (rn, peer, &rn->p, &attr, afi, safi, ri);
       }
 	  else
 	    bgp_adj_out_unset (rn, peer, &rn->p, afi, safi);
 	}
+
+/* the problem about the origin prefixes is that we do not know how many prefixes will be in a packet */
+  // if(working_mode==1)
+  //   {
+  // if(peer_list_for_sending_head!=NULL)
+  //   {
+  //     print_sending_list(&peer_list_for_sending_head);
+  //     prefix_advertising(prefix_value,aspath_str_value,sender_peer);
+  //   }
+  // }
+
 }
 
   bgp_attr_flush_encap(&attr);
