@@ -299,29 +299,30 @@ bgp_adj_out_set (struct bgp_node *rn, struct peer *peer, struct prefix *p,
   bgp_advertise_add (adv->baa, adv);
   if(strcmp("Static announcement",adv->binfo->peer->host)==0)
   {
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************this is our own prefixe************\n");
-    zlog_debug ("*******************************prefix %s/%d *************\n",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),p->prefixlen);
-    zlog_debug ("************************\n");
-    zlog_debug ("***********%s*************\n",adv->baa->attr->aspath->str);
+    // zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
+    // zlog_debug ("************this is our own prefixe************\n");
+    // zlog_debug ("*******************************prefix %s/%d *************\n",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),p->prefixlen);
+    // zlog_debug ("************************\n");
+    // zlog_debug ("***********%s*************\n",adv->baa->attr->aspath->str);
     owner_identity = 1;
     sender_peer = NULL;
   }
   else{
-    zlog_debug ("************************\n");
-    zlog_debug ("***********the ASPATH is %s*************\n",adv->baa->attr->aspath->str);
-    zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
+    // zlog_debug ("***********the ASPATH is %s*************\n",adv->baa->attr->aspath->str);
+    // zlog_debug ("************************\n");
     owner_identity = 0;
-    zlog_debug ("1****************************************************!!!***we set  %s as our sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *****************************\n",adv->binfo->peer->host);
+    // zlog_debug ("1****************************************************!!!***we set  %s as our sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *****************************\n",adv->binfo->peer->host);
     sender_peer = adv->binfo->peer;
 
-    zlog_debug ("2****************************************************!!!***we set  %s as our sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *****************************\n",sender_peer->host);
+    // zlog_debug ("2****************************************************!!!***we set  %s as our sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *****************************\n",sender_peer->host);
 
   }
+  if(working_mode==1)
   add_to_for_sending_list(&peer_list_for_sending_head,peer);
   //sender_peer = adv->binfo->peer;
-  zlog_debug ("*******************************3.bgp_adj_out_set*********************!!!***we will send prefix %s/%d  received from %s to %s *****************************\n",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),p->prefixlen,adv->binfo->peer->host,peer->host);
+  // zlog_debug ("*******************************3.bgp_adj_out_set*********************!!!***we will send prefix %s/%d  received from %s to %s *****************************\n",inet_ntop(p->family, &p->u.prefix, buf, SU_ADDRSTRLEN),p->prefixlen,adv->binfo->peer->host,peer->host);
   
   global_prefix_fizzling_variable = 1;
   BGP_ADV_FIFO_ADD (&peer->sync[afi][safi]->update, &adv->fifo);
@@ -379,7 +380,8 @@ bgp_adj_out_unset (struct bgp_node *rn, struct peer *peer, struct prefix *p,
 
       /* Schedule packet write. */
       BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
-      zlog_debug ("**********************************4.bgp_adj_out_unset******************!!!***we did set  to %s *****************************",peer->host);
+      //zlog_debug ("**********************************4.bgp_adj_out_unset******************!!!***we did set  to %s *****************************",peer->host);
+      if(working_mode==1)
       add_to_for_sending_list(&peer_list_for_sending_head,peer);
     global_prefix_fizzling_variable_for_withdraw = 1;
     }

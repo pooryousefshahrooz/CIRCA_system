@@ -118,6 +118,7 @@ struct time_stamp_ds{
     struct update_prefix_list *saved_prefixes;
     struct attr * attr_value;
     bool processed_value;
+    bool picked_as_best_route;
     struct time_stamp_ds * next;
 
 };

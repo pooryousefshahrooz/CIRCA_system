@@ -499,6 +499,9 @@ circa_fib_entry_receive (struct peer *peer, bgp_size_t size)
     router_id_part_of_event_id = stream_getl (s);
 zlog_debug ("this is router_id_part_of_event_id %ld from %s",router_id_part_of_event_id,peer->host);
   
+  char * in_event_id[EVENT_ID_LENGTH];
+  concat_long_values( seq_number_part_of_event_id,router_id_part_of_event_id ,&in_event_id,EVENT_ID_LENGTH);
+
 
   /* get prefix */
 
@@ -517,10 +520,24 @@ zlog_debug ("this is router_id_part_of_event_id %ld from %s",router_id_part_of_e
 
 //   bgp_attr_parse_ret_t ret = bgp_attr_nexthop (&attr_args);
 
-  zlog_debug ("we received and parsed fib entry from cloud avatar %s ",peer->host);
+  zlog_debug ("we received %s and parsed fib entry from cloud avatar %s ",in_event_id,peer->host);
 
 }
 
+void circa_fib_dispatching(char * event_id)
+{
+  zlog_debug ("we are at  circa_fib_dispatching for %s ",event_id);
+
+  if (avatar->status == Established)
+  {
+  struct prefix * p; 
+  //p = get_prefix_list_affected_by_event(&time_stamp_ds_head,event_id);
+  struct attr * attr;
+  //attr  = get_attr_of_event(&time_stamp_ds_head,event_id);
+  circa_msg_fib_entry_send (avatar,event_id,&p,&attr);
+}
+
+}
 
 
 /* Make a CIRCA_MSG_FIB_ENTRY packet which include event id, next hop, ASPATH and a list of prefixes */
@@ -528,8 +545,7 @@ void
 circa_msg_fib_entry_send (struct peer *peer,char * event_id,struct prefix * p,struct attr *attr)
 {
 
-  //zlog_debug ("outgoing CIRCA MSG FIB ENTRY to ground message to %s ",peer->host);
-  return;
+  zlog_debug ("outgoing CIRCA MSG FIB ENTRY to ground message to %s ",peer->host);
   afi_t afi;
   safi_t safi;
   struct stream *s;
@@ -563,35 +579,41 @@ circa_msg_fib_entry_send (struct peer *peer,char * event_id,struct prefix * p,st
 zlog_debug ("We wrote CIRCA_MSG_FIB_ENTRY sub code to the streem");
     /* 2: Write seq  number of event id  */
 
+    char * backup_event_id[EVENT_ID_LENGTH];
+    strncpy(backup_event_id,event_id,EVENT_ID_LENGTH);
+
+    long router_id_value = str_split(backup_event_id, ',',1);
+
+    long seq_number_sec = str_split(backup_event_id, ',',0);
     /* 2: Write seq  number */
-   stream_putl (s, 6666);
+   stream_putl (s, seq_number_sec);
 
     /* 2: Write seq  number2 as timestamp */
 
-   stream_putl (s, 6666);
+   stream_putl (s, router_id_value);
 
-zlog_debug ("We wrote local_as  to the streem");
+   zlog_debug ("We wrote local_as  to the streem");
 
    //struct prefix* p;
    zlog_debug ("We defined prefix");
    // strncpy(&p.u.prefix,"88.88.0.0/24",10);
 
     /* adding next hop */
-   if (attr->nexthop.s_addr == 0)
-      stream_put_ipv4 (s, peer->nexthop.v4.s_addr);
-    else
-      stream_put_ipv4 (s, attr->nexthop.s_addr);
-    /* adding aspath */
-    size_t aspath_sizep;
-    struct aspath *aspath;
-    int use32bit = 1;
+   // if (attr->nexthop.s_addr == 0)
+   //    stream_put_ipv4 (s, peer->nexthop.v4.s_addr);
+   //  else
+   //    stream_put_ipv4 (s, attr->nexthop.s_addr);
+   //  /* adding aspath */
+   //  size_t aspath_sizep;
+   //  struct aspath *aspath;
+   //  int use32bit = 1;
 
-    aspath = aspath_dup (attr->aspath);
-    stream_putc (s, BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_EXTLEN);
-    stream_putc (s, BGP_ATTR_AS_PATH);
-    aspath_sizep = stream_get_endp (s);
-    stream_putw (s, 0);
-    stream_putw_at (s, aspath_sizep, aspath_put (s, aspath, use32bit));
+   //  aspath = aspath_dup (attr->aspath);
+   //  stream_putc (s, BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_EXTLEN);
+   //  stream_putc (s, BGP_ATTR_AS_PATH);
+   //  aspath_sizep = stream_get_endp (s);
+   //  stream_putw (s, 0);
+   //  stream_putw_at (s, aspath_sizep, aspath_put (s, aspath, use32bit));
 
     /* adding prefix */
    stream_put_prefix (s, p);
@@ -631,7 +653,7 @@ zlog_debug ("We wrote 0  to the streem");
     BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
     stream_reset (s);
     stream_reset (snlri);
-    zlog_debug ("We are at the returning packet point for sending CIRCA FIB ENTRY MSG to %s", peer->host);    
+    zlog_debug ("We are at the returning packet point for sending CIRCA FIB ENTRY MSG for root cause event %s  to %s",event_id, peer->host);    
     return packet;
 }
 
@@ -639,6 +661,8 @@ zlog_debug ("We wrote 0  to the streem");
 void
 circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_router_id)
 {
+
+  if (peer->status == Established){
   zlog_debug ("outgoing CIRCA MSG message to %s ",peer->host);
   afi_t afi;
   safi_t safi;
@@ -708,6 +732,7 @@ circa_grc_msg_send (struct peer *peer,uint32_t grc_sub_code,uint32_t *target_rou
     stream_reset (snlri);
     zlog_debug ("We are at the returning packet point for sending CIRCA GRC MSG with event id %s to %s",global_event_id, peer->host);    
     return packet;
+  }
 }
 
 
@@ -752,31 +777,21 @@ circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
   bool we_are_owner = false;
   if(strcmp("Static announcement",adv->binfo->peer->host)==0)
   {
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************we are the owner of these prefixes************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
+    // zlog_debug ("************we are the owner of these prefixes************\n");
+    // zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
     we_are_owner = true;
   }
   if(strcmp("Static announcement",adv->binfo->peer->host)!=0){
-    zlog_debug ("************************\n");
-    //zlog_debug ("***********the ASPATH is %s %s*************\n",adv->baa->attr->aspath->str,adv->baa->attr->nexthop.s_addr);
-    zlog_debug ("************************\n");
+    // zlog_debug ("************************\n");
+    // //zlog_debug ("***********the ASPATH is %s %s*************\n",adv->baa->attr->aspath->str,adv->baa->attr->nexthop.s_addr);
+    // zlog_debug ("************************\n");
     we_are_owner = false;
   }
 
-  if(strcmp("20 10",adv->baa->attr->aspath->str)==0){
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    //zlog_debug ("***********the ASPATH is %s and this is router 30*************\n",adv->baa->attr->aspath->str);
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-    zlog_debug ("************************\n");
-  }
+  
 
   int first_prefix_in_list = 1;
   bool first_prefix_on_origin_list = true;
@@ -845,17 +860,17 @@ circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
             i = i+1;
             my_ptr = strtok(NULL, my_delim);
         }
-        zlog_debug(" +++++++++++++++++++++++++++++++++++++this prefix is not belong to us  a ASPATH %d and prefix %s", my_aspath_array[0],prefix_value);
-        print_time_stamp(&time_stamp_ds_head);
-        zlog_debug(" go to check received prefix event id time stam");
+        // zlog_debug(" +++++++++++++++++++++++++++++++++++++this prefix is not belong to us  a ASPATH %d and prefix %s", my_aspath_array[0],prefix_value);
+        // print_time_stamp(&time_stamp_ds_head);
+        // zlog_debug(" go to check received prefix event id time stam");
 
         if(check_if_we_have_received_prefix(&time_stamp_ds_head,prefix_value,my_aspath_array[0],adv->baa->attr->aspath->str))
         {
             int ret;
-            zlog_debug(" go to get event id time stam");
+            // zlog_debug(" go to get event id time stam");
            ret = get_event_id_time_stamp(&time_stamp_ds_head,prefix_value,my_aspath_array[0],&root_cause_event_id,&caused_time_stamp);
-          zlog_debug(" got event id time stam %s %s",root_cause_event_id,caused_time_stamp);
-          zlog_debug(" got event id time stam2 %s %s",root_cause_event_id,caused_time_stamp);
+          // zlog_debug(" got event id time stam %s %s",root_cause_event_id,caused_time_stamp);
+          // zlog_debug(" got event id time stam2 %s %s",root_cause_event_id,caused_time_stamp);
            if (ret >0)
            {
             int ret2;
@@ -868,7 +883,7 @@ circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
             }
            }
            else{
-              zlog_debug("+++++++++++++++22++++++++++++++++++++++++We have received this prefix but we did not get any time tamp for it !!! %s",prefix_value);
+              // zlog_debug("+++++++++++++++22++++++++++++++++++++++++We have received this prefix but we did not get any time tamp for it !!! %s",prefix_value);
               filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_on_origin_list);
               first_prefix_on_origin_list = false;
            }
@@ -876,55 +891,55 @@ circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
 
       else
         {
-          zlog_debug("+1+++++++++++++++++++++++++++++++++++++++We have not received this prefix or we have received but in converged events %s",prefix_value);
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++This prefix is belong to us  %s %s ",prefix_value,adv->baa->attr->aspath->str);
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          // zlog_debug("+1+++++++++++++++++++++++++++++++++++++++We have not received this prefix or we have received but in converged events %s",prefix_value);
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++This prefix is belong to us  %s %s ",prefix_value,adv->baa->attr->aspath->str);
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
           filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_on_origin_list);
           first_prefix_on_origin_list = false;
-          zlog_debug("+1.1.1.+++++++++++++++++++++++++++++++++++++++ the current event id being used is  %s",root_cause_event_id);
+          // zlog_debug("+1.1.1.+++++++++++++++++++++++++++++++++++++++ the current event id being used is  %s",root_cause_event_id);
         }
       }
   else
         {
-          zlog_debug("+2+++++++++++++++++++++++++++++++++++++++We have not received this prefix %s",prefix_value);
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++This prefix is belong to us  %s %s ",prefix_value,adv->baa->attr->aspath->str);
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          // zlog_debug("+2+++++++++++++++++++++++++++++++++++++++We have not received this prefix %s",prefix_value);
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++This prefix is belong to us  %s %s ",prefix_value,adv->baa->attr->aspath->str);
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++We will get event id from GRC message");
           filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_on_origin_list);
           first_prefix_on_origin_list = false;
-          zlog_debug("+2.2.2+++++++++++++++++++++++++++++++++++++++ the current event id being used is  %s",root_cause_event_id);
-          zlog_debug("********** this is global event id %s **********",root_cause_event_id);
+          // zlog_debug("+2.2.2+++++++++++++++++++++++++++++++++++++++ the current event id being used is  %s",root_cause_event_id);
+          // zlog_debug("********** this is global event id %s **********",root_cause_event_id);
         }
 
       if (strcmp(to_be_sent_time_stamp,"unknown")==0)
     {
-          zlog_debug("++++++++++++++++++++++++++++++++++++++++in sending  to %s the to_be_sent_time_stamp value is %s",peer->host,to_be_sent_time_stamp);
+          // zlog_debug("++++++++++++++++++++++++++++++++++++++++in sending  to %s the to_be_sent_time_stamp value is %s",peer->host,to_be_sent_time_stamp);
           filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_on_origin_list);
           first_prefix_on_origin_list = false;
     }
 
-    zlog_debug("+4+++++++++++++++++++++++++++++++++++++++lets send to  %s and root_cause_event_id is %s",peer->host, root_cause_event_id);
+    // zlog_debug("+4+++++++++++++++++++++++++++++++++++++++lets send to  %s and root_cause_event_id is %s",peer->host, root_cause_event_id);
 
     long router_id_value;
     char * backup_event_id[EVENT_ID_LENGTH];
     strncpy(backup_event_id,root_cause_event_id,EVENT_ID_LENGTH);
-    zlog_debug("+5+++++++++++++++++++++++++++++++++++++++lets send to  %s %s",peer->host,backup_event_id);
+    // zlog_debug("+5+++++++++++++++++++++++++++++++++++++++lets send to  %s %s",peer->host,backup_event_id);
 
     router_id_value = str_split(backup_event_id, ',',1);
-    zlog_debug("+6+++++++++++++++++++++++++++++++++++++++lets send to  %s %s",peer->host,backup_event_id);
+    // zlog_debug("+6+++++++++++++++++++++++++++++++++++++++lets send to  %s %s",peer->host,backup_event_id);
 
     long seq_number_sec = str_split(backup_event_id, ',',0);
     /* add CBGP sybtype */
-    zlog_debug("we are sending %ld as CIRCA_MSG_UPDATE to %s",CIRCA_MSG_UPDATE,peer->host);
+    // zlog_debug("we are sending %ld as CIRCA_MSG_UPDATE to %s",CIRCA_MSG_UPDATE,peer->host);
     stream_putl (s, CIRCA_MSG_UPDATE);
     /* add root cause event id */
-    zlog_debug("we are sending %s as event id to %s",backup_event_id,peer->host);
+    // zlog_debug("we are sending %s as event id to %s",backup_event_id,peer->host);
 
-    zlog_debug("we are sending %ld as seq_number_sec_of_event_id to %s %s",seq_number_sec,peer->host,root_cause_event_id);
+    // zlog_debug("we are sending %ld as seq_number_sec_of_event_id to %s %s",seq_number_sec,peer->host,root_cause_event_id);
 
     stream_putl (s, seq_number_sec);
-    zlog_debug("we are sending %ld as  router_id_value_of_event id to %s %s",router_id_value,peer->host,root_cause_event_id);
+    // zlog_debug("we are sending %ld as  router_id_value_of_event id to %s %s",router_id_value,peer->host,root_cause_event_id);
     stream_putl (s, router_id_value);
     /* add time stamp */
     long router_value_in_time_stamp;
@@ -933,12 +948,12 @@ circa_update_packet (struct peer *peer, afi_t afi, safi_t safi)
     strncpy(backup_time_stam,to_be_sent_time_stamp,EVENT_ID_LENGTH);
 
     router_value_in_time_stamp = str_split(backup_time_stam, ',',1);
-    zlog_debug("this is our time stamp after getting router value of it  %s  ",to_be_sent_time_stamp);
+    // zlog_debug("this is our time stamp after getting router value of it  %s  ",to_be_sent_time_stamp);
     long seq_number_part_of_time_stamp = str_split(backup_time_stam, ',',0);
-    zlog_debug("we are sending %ld as seq_number_part_of_time_stamp  to %s %s",seq_number_part_of_time_stamp,peer->host,to_be_sent_time_stamp);
+    // zlog_debug("we are sending %ld as seq_number_part_of_time_stamp  to %s %s",seq_number_part_of_time_stamp,peer->host,to_be_sent_time_stamp);
 
     stream_putl (s, seq_number_part_of_time_stamp);
-    zlog_debug("we are sending %ld as  router_value_in_time_stamp to %s %s",router_value_in_time_stamp,peer->host,to_be_sent_time_stamp);
+    // zlog_debug("we are sending %ld as  router_value_in_time_stamp to %s %s",router_value_in_time_stamp,peer->host,to_be_sent_time_stamp);
 
     stream_putl (s, router_value_in_time_stamp);
 
@@ -1258,29 +1273,29 @@ int filling_data_structure_for_un_root_router(char root_cause_event_id[],char to
 
   if (first_prefix_in_list==0)
     return 1;
-  zlog_debug(" we are going to fill unroot router data structure to send an update for  %s caused by %s",root_cause_event_id,caused_time_stamp);
-  print_caused_time_stamp_ds(&caused_time_stamps_head);
+  // zlog_debug(" we are going to fill unroot router data structure to send an update for  %s caused by %s",root_cause_event_id,caused_time_stamp);
+  // print_caused_time_stamp_ds(&caused_time_stamps_head);
   struct caused_time_stamps * caused_time_stamps_instance = (struct caused_time_stamps *) malloc (sizeof(struct caused_time_stamps));
   caused_time_stamps_instance = get_time_stamp_ds(&caused_time_stamps_head,caused_time_stamp,root_cause_event_id);
-  zlog_debug(" +++++++++++++++++++++++++++++++++++++got list of peers  prefix %s from  to %s",prefix_value,peer->host);
+  // zlog_debug(" +++++++++++++++++++++++++++++++++++++got list of peers  prefix %s from  to %s",prefix_value,peer->host);
   if(caused_time_stamps_instance !=NULL)
   {
     struct list_of_time_stamps * list_of_time_stamps_for_this;
     list_of_time_stamps_for_this = caused_time_stamps_instance -> generated_time_stamps ;
-    zlog_debug(" +++++++++++++++++++++++++++++++++++++we ar going to ge the list of time stamps  prefix %s being sent to %s",prefix_value,peer->host);
+    // zlog_debug(" +++++++++++++++++++++++++++++++++++++we ar going to ge the list of time stamps  prefix %s being sent to %s",prefix_value,peer->host);
     while(list_of_time_stamps_for_this != NULL)
     {
       struct cause* cause_of_fizzle = (struct cause*) malloc(sizeof(struct cause));
-      zlog_debug(" +++++++++++++++++++++++++++++++++++++going to get cause  prefix %s from  to %s",prefix_value,peer->host);
+      // zlog_debug(" +++++++++++++++++++++++++++++++++++++going to get cause  prefix %s from  to %s",prefix_value,peer->host);
       cause_of_fizzle = getcause(&(cause_head),list_of_time_stamps_for_this->time_stamp_id ,list_of_time_stamps_for_this->event_id);
-      zlog_debug(" +++++++++++++++++++++++++++++++++++++ got cause  prefix %s from  to %s",prefix_value,peer->host);
+      // zlog_debug(" +++++++++++++++++++++++++++++++++++++ got cause  prefix %s from  to %s",prefix_value,peer->host);
       if (cause_of_fizzle != NULL)
 
         if(strcmp(cause_of_fizzle->sending_timestamp,list_of_time_stamps_for_this->time_stamp_id)==0 && strcmp(list_of_time_stamps_for_this->send_to_peer->host,peer->host)==0 )
         {
           strncpy(root_cause_event_id,cause_of_fizzle->event_id,EVENT_ID_LENGTH);
           strncpy(to_be_sent_time_stamp,cause_of_fizzle->sending_timestamp,TIME_STAMP_LENGTH);
-          zlog_debug(" +++++++++++++++++++++++++++++++++++++we are setting %s as one time stamp generated by %s send to %s",to_be_sent_time_stamp,cause_of_fizzle->received_timestamp,peer->host);
+          // zlog_debug(" +++++++++++++++++++++++++++++++++++++we are setting %s as one time stamp generated by %s send to %s",to_be_sent_time_stamp,cause_of_fizzle->received_timestamp,peer->host);
           break;
         }
       list_of_time_stamps_for_this = list_of_time_stamps_for_this -> next;
@@ -1294,18 +1309,18 @@ int filling_data_structure_for_un_root_router(char root_cause_event_id[],char to
   the_neighbours_we_have_sent_event = get_neighbours_sent_to(&(neighbours_sent_to_head),root_cause_event_id);
     if (the_neighbours_we_have_sent_event != NULL)
     {
-        zlog_debug (" Before adding to the list and neighbors of the prefix");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug (" Before adding to the list and neighbors of the prefix");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
         remove_neighbours_event_sent_to(&(neighbours_sent_to_head), root_cause_event_id);
-        zlog_debug (" after removing to the list and neighbors of the prefix");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug (" after removing to the list and neighbors of the prefix");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
         struct peer_list * my_temp = the_neighbours_we_have_sent_event -> peer_list ;
         //zlog_debug("********** going to print the peer list ********");
         /* a variable which we will check if we have already have the peer in the list of peers we have sent them for this event */
         int already_sent =0;
         while(my_temp != NULL)
         {
-            zlog_debug("this is the host of the peer %s we are sending this update %s to", my_temp -> peer -> host,root_cause_event_id);
+            // zlog_debug("this is the host of the peer %s we are sending this update %s to", my_temp -> peer -> host,root_cause_event_id);
             //bgp_convergence_send (my_temp -> peer,rec_root_cause_event_id, received_prefix);
             add_to_peer_list(&(appending_peer_list), my_temp -> peer);
             if (my_temp -> peer->as==peer->as)
@@ -1313,23 +1328,23 @@ int filling_data_structure_for_un_root_router(char root_cause_event_id[],char to
             my_temp = my_temp -> next;
          }
 
-        zlog_debug("Lets add this new peer %s to the list too as a peer we are sending event %s to it",peer->host,root_cause_event_id);
+        // zlog_debug("Lets add this new peer %s to the list too as a peer we are sending event %s to it",peer->host,root_cause_event_id);
         /* we will add the peer to the list of peers we have sent event update to them if we have not added before */
         if(already_sent==0)
         add_to_peer_list(&(appending_peer_list),  peer);
-        zlog_debug("We added to the list");
+        // zlog_debug("We added to the list");
         add_to_neighbours_sent_to_of_an_event(&(neighbours_sent_to_head),root_cause_event_id, appending_peer_list);
-        zlog_debug("We added the list to the neighbor of the prefix data structure");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug("We added the list to the neighbor of the prefix data structure");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
     }
       else
       {
-          zlog_debug (" We have not sent  %s to any neighbor!!!", root_cause_event_id);
+          // zlog_debug (" We have not sent  %s to any neighbor!!!", root_cause_event_id);
           struct peer_list* appending_peer_list2 = NULL;
           add_to_peer_list(&(appending_peer_list2),  peer);
-          zlog_debug("We added just this one to the list");
+          // zlog_debug("We added just this one to the list");
           add_to_neighbours_sent_to_of_an_event(&(neighbours_sent_to_head), root_cause_event_id, appending_peer_list2);
-          print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+          //print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
 
       }
     /* We will set this event id as an event which ha not convergence and if it has not been set before */
@@ -1337,7 +1352,7 @@ int filling_data_structure_for_un_root_router(char root_cause_event_id[],char to
     return 1;
   }
   else{
-  zlog_debug("+++++++++++++++++++++++++++++++++++++++We have received this prefix but we did not get any time tamp for it !!! %s",prefix_value);
+  //zlog_debug("+++++++++++++++++++++++++++++++++++++++We have received this prefix but we did not get any time tamp for it !!! %s",prefix_value);
   return -1;
   }
 }
@@ -1348,8 +1363,8 @@ void filling_data_structure_for_root_router(char root_cause_event_id[],char to_b
 {
   if(!first_prefix_on_origin_list)
     return ;
-  zlog_debug("******+++++++++++++++++*******++++++++++++++++++++++ we are going to fill data structures for root router *********++++++++*******");
-  print_caused_time_stamp_ds(&caused_time_stamps_head);
+  // zlog_debug("******+++++++++++++++++*******++++++++++++++++++++++ we are going to fill data structures for root router *********++++++++*******");
+  // print_caused_time_stamp_ds(&caused_time_stamps_head);
   char * caused_time_stamp[TIME_STAMP_LENGTH];
   strncpy(caused_time_stamp ,"GRC", TIME_STAMP_LENGTH);
   /* we have already generated a new event id based on the event has accoured or received from ground*/
@@ -1379,18 +1394,18 @@ void filling_data_structure_for_root_router(char root_cause_event_id[],char to_b
   the_neighbours_we_have_sent_event = get_neighbours_sent_to(&(neighbours_sent_to_head),root_cause_event_id);
     if (the_neighbours_we_have_sent_event != NULL)
     {
-        zlog_debug (" Before adding to the list and neighbors of the prefix");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug (" Before adding to the list and neighbors of the prefix");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
         remove_neighbours_event_sent_to(&(neighbours_sent_to_head), root_cause_event_id);
-        zlog_debug (" after removing to the list and neighbors of the prefix");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug (" after removing to the list and neighbors of the prefix");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
         struct peer_list * my_temp = the_neighbours_we_have_sent_event -> peer_list ;
         //zlog_debug("********** going to print the peer list ********");
         /* a variable which we will check if we have already have the peer in the list of peers we have sent them for this event */
         int already_sent =0;
         while(my_temp != NULL)
         {
-            zlog_debug("this is the host of the peer %s we are sending this update %s to", my_temp -> peer -> host,root_cause_event_id);
+            // zlog_debug("this is the host of the peer %s we are sending this update %s to", my_temp -> peer -> host,root_cause_event_id);
             //bgp_convergence_send (my_temp -> peer,rec_root_cause_event_id, received_prefix);
             add_to_peer_list(&(appending_peer_list), my_temp -> peer);
             if (my_temp -> peer->as==peer->as)
@@ -1398,23 +1413,23 @@ void filling_data_structure_for_root_router(char root_cause_event_id[],char to_b
             my_temp = my_temp -> next;
          }
 
-        zlog_debug("Lets add this new peer %s to the list too as a peer we are sending event %s to it",peer->host,root_cause_event_id);
+        // zlog_debug("Lets add this new peer %s to the list too as a peer we are sending event %s to it",peer->host,root_cause_event_id);
         /* we will add the peer to the list of peers we have sent event update to them if we have not added before */
         if(already_sent==0)
         add_to_peer_list(&(appending_peer_list),  peer);
-        zlog_debug("We added to the list");
+        // zlog_debug("We added to the list");
         add_to_neighbours_sent_to_of_an_event(&(neighbours_sent_to_head),root_cause_event_id, appending_peer_list);
-        zlog_debug("We added the list to the neighbor of the prefix data structure");
-        print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+        // zlog_debug("We added the list to the neighbor of the prefix data structure");
+        // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
     }
       else
       {
-          zlog_debug (" We have not sent  %s to any neighbor!!!", root_cause_event_id);
+          // zlog_debug (" We have not sent  %s to any neighbor!!!", root_cause_event_id);
           struct peer_list* appending_peer_list2 = NULL;
           add_to_peer_list(&(appending_peer_list2),  peer);
-          zlog_debug("We added just this one to the list");
+          // zlog_debug("We added just this one to the list");
           add_to_neighbours_sent_to_of_an_event(&(neighbours_sent_to_head), root_cause_event_id, appending_peer_list2);
-          print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+          // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
 
       }
 
@@ -1474,6 +1489,22 @@ char buf2[INET6_BUFSIZ];
   break;
   
   zlog_debug("we are going to send withdraw for prefix %s/%d to %s",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf2, INET6_BUFSIZ), rn->p.prefixlen,peer->host);
+  // struct bgp_advertise *adv;
+  // adv = BGP_ADV_FIFO_HEAD (&peer->sync[afi][safi]->update);
+  // if(strcmp("Static announcement",adv->binfo->peer->host)==0)
+  // {
+  //   zlog_debug ("************************\n");
+  //   zlog_debug ("************************\n");
+  //   zlog_debug ("************we are the owner of these prefixes************\n");
+  //   zlog_debug ("************************\n");
+  //   zlog_debug ("************************\n");
+  // }
+  // if(strcmp("Static announcement",adv->binfo->peer->host)!=0){
+  //   zlog_debug ("************************\n");
+  //   //zlog_debug ("***********the ASPATH is %s %s*************\n",adv->baa->attr->aspath->str,adv->baa->attr->nexthop.s_addr);
+  //   zlog_debug ("************************\n");
+  // }
+  // zlog_debug("2 we are going to send withdraw for prefix %s/%d to %s",inet_ntop (rn->p.family, &(rn->p.u.prefix), buf2, INET6_BUFSIZ), rn->p.prefixlen,peer->host);
 
   /* here we will generate a new unique time stamp for our sending packet */
     char * caused_time_stamp[TIME_STAMP_LENGTH];
@@ -1507,10 +1538,11 @@ char buf2[INET6_BUFSIZ];
         {
             struct list_of_time_stamps * list_of_time_stamps_for_this;
             list_of_time_stamps_for_this = caused_time_stamps_instance -> generated_time_stamps ;
+            bool we_got_time_stamp_event_id = false;
             zlog_debug(" +++++++++++++++++++++++++++++++++++++setted list of time stamps  prefix %s from  to %s",prefix_value,peer->host);
+            struct cause* cause_of_fizzle = (struct cause*) malloc(sizeof(struct cause));
             while(list_of_time_stamps_for_this != NULL)
                 {
-                struct cause* cause_of_fizzle = (struct cause*) malloc(sizeof(struct cause));
                 zlog_debug(" +++++++++++++++++++++++++++++++++++++going to get cause  prefix %s from  to %s",prefix_value,peer->host);
                 cause_of_fizzle = getcause(&(cause_head),list_of_time_stamps_for_this->time_stamp_id ,list_of_time_stamps_for_this->event_id);
                 zlog_debug(" +++++++++++++++++++++++++++++++++++++ got cause  prefix %s from  to %s",prefix_value,peer->host);
@@ -1521,10 +1553,29 @@ char buf2[INET6_BUFSIZ];
                     strncpy(root_cause_event_id,cause_of_fizzle->event_id,EVENT_ID_LENGTH);
                     strncpy(to_be_sent_time_stamp,cause_of_fizzle->sending_timestamp,TIME_STAMP_LENGTH);
                     zlog_debug(" +++++++++++++++++++++++++++++++++++++we are setting %s as one time stamp generated by %s send to %s",to_be_sent_time_stamp,cause_of_fizzle->received_timestamp,peer->host);
+                    we_got_time_stamp_event_id = true;
                     break;
                   }
                   list_of_time_stamps_for_this = list_of_time_stamps_for_this -> next;
                  }
+
+        if(we_got_time_stamp_event_id)
+        {
+          int ret2;
+          ret2 = filling_data_structure_for_un_root_router(&root_cause_event_id,&to_be_sent_time_stamp,cause_of_fizzle->received_timestamp,prefix_value,peer,first_prefix_in_list);
+          first_prefix_in_list = false;
+          if(ret2<0)
+          {
+            filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_in_list);
+            first_prefix_in_list = false;
+          }
+        }
+        else
+        {
+          filling_data_structure_for_root_router(&root_cause_event_id,&to_be_sent_time_stamp,peer,first_prefix_in_list);
+          first_prefix_in_list = false;
+        }
+
         }
         else{
           zlog_debug("++++++++++++++++++++withdraw+++++++++++++++++++We have received this prefix but we did not get any time tamp for it !!! %s",prefix_value);
@@ -1539,6 +1590,8 @@ char buf2[INET6_BUFSIZ];
           first_prefix_in_list = false;
           zlog_debug("******+++++++++++++++++*******++++++++++++++++++++++ we did fill data structures for root router to_be_sent_time_stamp %s  and root_cause_event_id %s *********++++++++*******",to_be_sent_time_stamp,root_cause_event_id);
        }
+
+
     }
     else
       {
@@ -3098,6 +3151,9 @@ bgp_nlri_parse (struct peer *peer, struct attr *attr, struct bgp_nlri *packet)
 void
 circa_fizzle_send (struct peer *peer,char  *passed_root_cause_event_id,char *passed_time_stamp)
 {
+
+  if(peer->status == Established){
+
 zlog_debug ("outgoing FIZZLE message to %s passed_root_cause_event_id  %s  passed_time_stamp %s ",peer->host,passed_root_cause_event_id,passed_time_stamp);
 
   long event_id_sequence_id;
@@ -3175,27 +3231,28 @@ zlog_debug ("3the time stamp value %s  %s ",passed_time_stamp,backup_ts);
     zlog_debug ("We are at line 2595 ");
     /* 3: total attributes length - attrlen_pos stores the position */
     attrlen_pos = stream_get_endp (s);
-    zlog_debug ("We are at line 2595 ");
+
     /* 4: if there is MP_REACH_NLRI attribute, that should be the first
      * attribute, according to draft-ietf-idr-error-handling. Save the
      * position.
      */
     mpattr_pos = stream_get_endp(s);
-    zlog_debug ("We are at line 1 ");
+
     packet = stream_dup (s);
-    zlog_debug ("We are at line 2 ");
+
     bgp_packet_set_size (packet);
-    zlog_debug ("We are at line 3 ");
+
     bgp_packet_add (peer, packet);
     zlog_debug ("We are at line 4 ");
     BGP_WRITE_ON (peer->t_write, bgp_write, peer->fd);
     zlog_debug ("We are at line 5 ");
     stream_reset (s);
-    zlog_debug ("We are at line 6 ");
+
     stream_reset (snlri);
-    zlog_debug ("We are at line 7 ");
+
     zlog_debug ("We are at the returning packet point for sending FIZZLE for event id %s time stamp %s to %s",passed_root_cause_event_id,passed_time_stamp,peer->host);
     return packet;
+  }
 }
 
 
@@ -3203,8 +3260,10 @@ zlog_debug ("3the time stamp value %s  %s ",passed_time_stamp,backup_ts);
 void
 circa_fizzle_receive (struct peer *peer, bgp_size_t size)
 {
+
+
   zlog_debug ("we received a fizzle message from %s",peer->host);
-  printcause(&cause_head);
+  // printcause(&cause_head);
 
   char received_event_id[EVENT_ID_LENGTH];
   char received_time_stamp[TIME_STAMP_LENGTH];
@@ -3285,9 +3344,9 @@ circa_fizzle_receive (struct peer *peer, bgp_size_t size)
   delete_from_sent(&sent_head,received_time_stamp,received_event_id);
 
   struct caused_time_stamps* our_time_stamp_ds = (struct caused_time_stamps*) malloc(sizeof(struct caused_time_stamps));
-  print_caused_time_stamp_ds(&caused_time_stamps_head);
+  // print_caused_time_stamp_ds(&caused_time_stamps_head);
   delete_time_stamp_from_generated_time_stamps(&caused_time_stamps_head,received_event_id,received_time_stamp);
-  print_caused_time_stamp_ds(&caused_time_stamps_head);
+  // print_caused_time_stamp_ds(&caused_time_stamps_head);
 
   if(check_if_sent_is_empty_second_version(&caused_time_stamps_head,received_event_id)&& check_if_we_are_the_owner_of_event(peer,event_id_router_id))
   {
@@ -3324,33 +3383,34 @@ circa_dessimination_phase (char * event_id)
 
   zlog_debug("***************************************************** CIRCA_MSG_DISSEMINATION  ******************");
   zlog_debug("***************************************************** %s root cause owner ****************",event_id);
+  circa_fib_dispatching(event_id);
   set_converged_value_true(&converged_head, event_id);
   //circa_msg_fib_entry_send();
 
   struct neighbours_sent_to * neighbour_we_sent_them = (struct neighbours_sent_to *) malloc (sizeof(struct neighbours_sent_to));
   neighbour_we_sent_them = get_neighbours_sent_to(&(neighbours_sent_to_head),event_id);
-  zlog_debug (" lets print neighbors we have sent event to them");
-  print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
-  zlog_debug ("finished");
+  // zlog_debug (" lets print neighbors we have sent event to them");
+  // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+  // zlog_debug ("finished");
     if (neighbour_we_sent_them != NULL)
     {
-        zlog_debug (" this is our peers we have sent an update to");
+        // zlog_debug (" this is our peers we have sent an update to");
         struct peer_list * my_temp = neighbour_we_sent_them -> peer_list ;
         //zlog_debug("********** going to print the peer list ********");
         while(my_temp != NULL)
         {   
-            zlog_debug("this is the host of the peer %s and lets send a convergence message to it", my_temp -> peer -> host);
+            // zlog_debug("this is the host of the peer %s and lets send a convergence message to it", my_temp -> peer -> host);
 
             circa_dissemination_send (my_temp -> peer,event_id);
             
             my_temp = my_temp -> next;
          }
     }
-    else
-        zlog_debug (" We have not sent this root cause event %s to any neighbor!!!",event_id);
+    // else
+    //     zlog_debug (" We have not sent this root cause event %s to any neighbor!!!",event_id);
 
 }
-zlog_debug ("!!!!!!!!!!!!!!!!!this root cause event %s already has been convergend so we will not send dissemination phase message again!!!!!!!!!",event_id);
+// zlog_debug ("!!!!!!!!!!!!!!!!!this root cause event %s already has been convergend so we will not send dissemination phase message again!!!!!!!!!",event_id);
 
 
 //     clear_time_stamp_for_event(event_id);
@@ -3434,22 +3494,24 @@ circa_dissemination_receive (struct peer *peer, bgp_size_t size)
   strcat(event_id, char_my_router_id);
   zlog_debug("***************************************************** CIRCA_MSG_DISSEMINATION  ******************");
   zlog_debug("***************************************************** %s  from %s ************************",event_id,peer->host);
+  
   if(get_converged_value(&converged_head, event_id)==0)
   {
+    circa_fib_dispatching(event_id);
     set_converged_value_true(&converged_head, event_id);
     struct neighbours_sent_to * neighbour_we_sent_them = (struct neighbours_sent_to *) malloc (sizeof(struct neighbours_sent_to));
     neighbour_we_sent_them = get_neighbours_sent_to(&(neighbours_sent_to_head),event_id);
-    zlog_debug (" lets print neighbors we have sent event to them");
-    print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
-    zlog_debug ("finished");
+    // zlog_debug (" lets print neighbors we have sent event to them");
+    // print_neighbours_we_have_sent_event(&(neighbours_sent_to_head));
+    // zlog_debug ("finished");
     if (neighbour_we_sent_them != NULL)
     {
-        zlog_debug (" this is our peers we have sent an update to");
+        // zlog_debug (" this is our peers we have sent an update to");
         struct peer_list * my_temp = neighbour_we_sent_them -> peer_list ;
         //zlog_debug("********** going to print the peer list ********");
         while(my_temp != NULL)
         {   
-            zlog_debug("this is the host of the peer %s and lets send a convergence message to it", my_temp -> peer -> host);
+            // zlog_debug("this is the host of the peer %s and lets send a convergence message to it", my_temp -> peer -> host);
             circa_dissemination_send (my_temp -> peer,event_id);
             my_temp = my_temp -> next;
          }
@@ -3906,23 +3968,23 @@ zlog_debug ("this is router_id_part_of_time_stamp %ld from %s",router_id_part_of
      strncpy(aspath_str_value,"withdraw",PREFIX_LENGTH);
     }
     else{
-    zlog_debug("we will copy aspath in aspath str %s",attr.aspath->str);
+    // zlog_debug("we will copy aspath in aspath str %s",attr.aspath->str);
     strncpy(aspath_str_value,attr.aspath->str,PREFIX_LENGTH);
   }
     zlog_debug("\n ********************* we received an UPDATE message from %s with event id %s and time stamp %s ************ \n ",peer->host,in_time_stamp_id,in_event_id);
 
-    zlog_debug("we are going to add new time stamp");
+    // zlog_debug("we are going to add new time stamp");
     add_new_time_stamp(&time_stamp_ds_head,in_event_id,in_time_stamp_id,peer->local_as,prefix_list_head,peer,&attr,aspath_str_value);
-    zlog_debug("lets print received time stamp with their prefix list");
-    print_time_stamp(&time_stamp_ds_head);
+    // zlog_debug("lets print received time stamp with their prefix list");
+    // print_time_stamp(&time_stamp_ds_head);
     insert_in_converged(&converged_head, in_event_id);
   }
   /* in case we receive an update but we have not add any of its prefixes to the list, 
   that means we have rejected the prefixes because of import policy */
   else{
-      zlog_debug("this update got fizzleded because of import policies! lets send back a fizzle");
+      // zlog_debug("this update got fizzleded because of import policies! lets send back a fizzle");
       circa_fizzle_send (peer,in_event_id,in_time_stamp_id);
-      zlog_debug("we sent back a fizzle message for it");
+      // zlog_debug("we sent back a fizzle message for it");
   }
   /* Increment packet counter. */
   peer->update_in++;
