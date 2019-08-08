@@ -1,0 +1,5 @@
+2019/07/31 18:50:34.292368 BGP: we received an update message from 9
+2019/07/31 18:50:34.292596 BGP: *******... we finished receiving 0 prefixes in update and 100 prefixes in withdraw message from 9
+2019/07/31 18:50:34.292918 BGP: we are sending withdraw message to 7
+2019/07/31 18:50:34.293014 BGP: we finished building the withdraw message with 100 prefixes be sent to 7
+2019/07/31 18:50:34.293055 BGP: *******...we wrote 5 update messages to socket for 7
